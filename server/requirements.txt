@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+websockets
+litellm
+python-dotenv
+httpx
+tree-sitter
+tree-sitter-languages
+numpy
+light-embed
+pathspec
+

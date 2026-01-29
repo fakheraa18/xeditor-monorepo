@@ -1,0 +1,214 @@
+[
+  {
+    "id": "gpt-5.2",
+    "provider": "openai",
+    "family": "gpt",
+    "name": "GPT 5.2",
+    "version": "5.2",
+    "contextWindow": 128000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": true
+    },
+    "connection": {
+      "baseUrl": "https://api.openai.com",
+      "path": "/v1/chat/completions",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "claude-opus-4.5",
+    "provider": "anthropic",
+    "family": "claude",
+    "name": "Claude Opus 4.5",
+    "version": "4.5-opus",
+    "contextWindow": 200000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": true
+    },
+    "connection": {
+      "baseUrl": "https://api.anthropic.com",
+      "path": "/v1/messages",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "claude-sonnet-4.5",
+    "provider": "anthropic",
+    "family": "claude",
+    "name": "Claude Sonnet 4.5",
+    "version": "4.5-sonnet",
+    "contextWindow": 200000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": true
+    },
+    "connection": {
+      "baseUrl": "https://api.anthropic.com",
+      "path": "/v1/messages",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "gemini-3-pro",
+    "provider": "openai_compatible",
+    "family": "gemini",
+    "name": "Gemini 3 Pro",
+    "version": "3.0-pro",
+    "contextWindow": 2000000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": true
+    },
+    "connection": {
+      "baseUrl": "https://generativelanguage.googleapis.com",
+      "path": "/v1beta/models/gemini-3-pro:generateContent",
+      "auth": {
+        "type": "header",
+        "headerName": "x-goog-api-key"
+      }
+    }
+  },
+  {
+    "id": "gemini-3-flash",
+    "provider": "openai_compatible",
+    "family": "gemini",
+    "name": "Gemini 3 Flash",
+    "version": "3.0-flash",
+    "contextWindow": 1000000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": true
+    },
+    "connection": {
+      "baseUrl": "https://generativelanguage.googleapis.com",
+      "path": "/v1beta/models/gemini-3-flash-preview:generateContent",
+      "auth": {
+        "type": "header",
+        "headerName": "x-goog-api-key"
+      }
+    }
+  },
+  {
+    "id": "deepseek-v3",
+    "provider": "openai_compatible",
+    "family": "deepseek",
+    "name": "DeepSeek V3",
+    "version": "V3",
+    "contextWindow": 64000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": false
+    },
+    "connection": {
+      "baseUrl": "https://api.deepseek.com",
+      "path": "/v1/chat/completions",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "kimi-k2",
+    "provider": "openai_compatible",
+    "family": "kimi",
+    "name": "Kimi K2 Thinking Turbo",
+    "version": "K2",
+    "contextWindow": 200000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": false
+    },
+    "connection": {
+      "baseUrl": "https://api.moonshot.cn",
+      "path": "/v1/chat/completions",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "qwen-3",
+    "provider": "openai_compatible",
+    "family": "qwen",
+    "name": "Qwen 3",
+    "version": "3",
+    "contextWindow": 32000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": false
+    },
+    "connection": {
+      "baseUrl": "https://api.tongyi.aliyun.com",
+      "path": "/v1/services/aigc/text-generation/generation",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "glm-4.6",
+    "provider": "openai_compatible",
+    "family": "glm",
+    "name": "GLM 4.6 (Z.ai)",
+    "version": "4.6",
+    "contextWindow": 128000,
+    "capabilities": {
+      "jsonMode": true,
+      "functionCalling": true,
+      "streaming": true,
+      "vision": false
+    },
+    "connection": {
+      "baseUrl": "https://open.bigmodel.cn",
+      "path": "/api/paas/v4/chat/completions",
+      "auth": {
+        "type": "bearer"
+      }
+    }
+  },
+  {
+    "id": "llama-4",
+    "provider": "ollama",
+    "family": "llama",
+    "name": "Llama 4",
+    "version": "4",
+    "contextWindow": 128000,
+    "capabilities": {
+      "jsonMode": false,
+      "functionCalling": false,
+      "streaming": true,
+      "vision": true
+    },
+    "connection": {
+      "baseUrl": "http://localhost:11434",
+      "path": "/api/chat",
+      "auth": {
+        "type": "none"
+      }
+    }
+  }
+]

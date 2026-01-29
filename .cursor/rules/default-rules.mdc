@@ -1,0 +1,23 @@
+---
+alwaysApply: true
+---
+
+We are developing an AI assisted IDE. The project allows users to create various model by them self by settin gthier providers also, local (Lm studio/ollama/vllm..) or api providers (openai/anthopic/openrouter...). The best part of this project is, it lets community create prompts set (with modes like ask, plan or agent) and thir prompt respoense parsers also as well as their own tools.
+
+WE are using typescript, do not use "any" always follow strict types
+Always try to solve lint and vue-tsc errors after your full code done.
+Do not try to run server, we have always running in other terminal while chating with you.
+This project is a monorepo with:
+
+- client/: Vue3+Quasar2 frontend application
+- server/: Python FastAPI backend (local_companion): always use uv run python to run anything and always use uv in here.
+
+Always prefer single source of truth and separation of concerned so we do not do code duplications and still all code is well managed
+
+When making a vue component and you think it will be mix of many things, try to make sure the file does not gorw long and create proper components.
+
+Always try to re use same components if possible.
+
+Better use stores to communicate rather too many emit and v-models for vue code.
+
+Always remember that we are making a new product here so we do not need any sort of backword compatibility, if we are refactoring anything, just refactor and do not keep backward compatibility unless specified specifically.

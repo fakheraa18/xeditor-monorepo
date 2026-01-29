@@ -1,0 +1,10 @@
+{
+  "name": "xeditor-server",
+  "version": "0.1.0",
+  "description": "XEditor Local Companion Server",
+  "private": true,
+  "scripts": {
+    "start": "python main.py",
+    "dev": "python main.py --port 8000"
+  }
+}

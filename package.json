@@ -1,0 +1,33 @@
+{
+  "name": "xeditor-monorepo",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev:client": "npm run dev --workspace=client",
+    "build:client": "npm run build --workspace=client",
+    "lint:client": "npm run lint --workspace=client",
+    "format:client": "npm run format --workspace=client",
+    "dev:server": "cd server && uv run python main.py --reload",
+    "dev:electron": "cd client && quasar dev -m electron -- --no-sandbox --disable-setuid-sandbox",
+    "install:all": "npm install && cd server && uv sync || pip install -r requirements.txt",
+    "setup:rg": "bash ./scripts/setup-dev-rg.sh",
+    "build:client-protected": "bash ./scripts/build-client-protected.sh",
+    "build:server-protected": "bash ./scripts/build-server-protected.sh",
+    "build:protected": "npm run build:client-protected && npm run build:server-protected",
+    "build:electron": "bash ./scripts/build-electron.sh",
+    "ship:linux": "node ./scripts/ship-electron.mjs --platform=linux",
+    "ship:linux:fast": "node ./scripts/ship-electron.mjs --platform=linux --skip-server",
+    "ship:mac": "node ./scripts/ship-electron.mjs --platform=mac",
+    "ship:win": "node ./scripts/ship-electron.mjs --platform=win",
+    "package:dist": "bash ./scripts/package-dist.sh",
+    "package:electron": "bash ./scripts/package-electron-dist.sh"
+  },
+  "engines": {
+    "node": "^28 || ^26 || ^24 || ^22 || ^20",
+    "npm": ">= 6.13.4"
+  } 
+}

@@ -1,0 +1,26 @@
+{
+  "tools": [
+    "read_file",
+    "write_file",
+    "search_code",
+    "list_dir",
+    "run_command",
+    "create_file",
+    "delete_file",
+    "file_exists",
+    "search_replace",
+    "todo_write",
+    "semantic_search",
+    "delegate_task"
+  ],
+  "settings": {
+    "read_file": {
+      "thresholdChars": 50000,
+      "maxChars": 100000,
+      "maxLines": 2000,
+      "headLines": 100,
+      "middleLines": 50,
+      "tailLines": 100
+    }
+  }
+}

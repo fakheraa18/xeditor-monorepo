@@ -1,0 +1,256 @@
+// app global css in SCSS form
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Base Styles
+// ─────────────────────────────────────────────────────────────────────────────
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans',
+    'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+#q-app {
+  height: 100vh;
+  width: 100vw;
+}
+
+.full-height {
+  height: 100%;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom Scrollbar Styling (Webkit/Chromium)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Thin scrollbars for most elements
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+// Firefox scrollbar styling
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global Transitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Smooth transitions for interactive elements
+.q-btn,
+.q-item,
+.q-tab,
+.q-expansion-item {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease !important;
+}
+
+// Focus states
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid rgba(25, 118, 210, 0.5);
+  outline-offset: 2px;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Typography Improvements
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Override Quasar typography for AI Panel message content
+.assistant-message-content h1,
+.message-content h1 {
+  font-size: 1.25em !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin: 10px 0 6px 0 !important;
+  padding-bottom: 3px !important;
+  border-bottom: 1px solid #e8e8e8;
+  letter-spacing: normal !important;
+}
+
+.assistant-message-content h2,
+.message-content h2 {
+  font-size: 1.15em !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin: 8px 0 4px 0 !important;
+  letter-spacing: normal !important;
+}
+
+.assistant-message-content h3,
+.message-content h3 {
+  font-size: 1.1em !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin: 6px 0 4px 0 !important;
+  letter-spacing: normal !important;
+}
+
+.assistant-message-content h4,
+.assistant-message-content h5,
+.assistant-message-content h6,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  font-size: 1.05em !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin: 6px 0 3px 0 !important;
+  letter-spacing: normal !important;
+}
+
+// Code and monospace fonts
+code,
+pre,
+.monaco-editor,
+.code-font {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+
+// Better text selection
+::selection {
+  background: rgba(25, 118, 210, 0.3);
+  color: inherit;
+}
+
+::-moz-selection {
+  background: rgba(25, 118, 210, 0.3);
+  color: inherit;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quasar Component Overrides
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Splitter separators
+.q-splitter__separator {
+  background: #e0e0e0 !important;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: #1976d2 !important;
+  }
+}
+
+// Tooltip styling
+.q-tooltip {
+  font-size: 12px;
+  padding: 6px 10px;
+  background: #424242;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+// Dialog styling
+.q-dialog__backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+// Menu styling
+.q-menu {
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e0e0e0;
+}
+
+// Tab improvements
+.q-tabs__content {
+  overflow: visible !important;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utility Classes
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Text ellipsis
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// No user select
+.no-select {
+  user-select: none;
+}
+
+// Pointer cursor
+.cursor-pointer {
+  cursor: pointer;
+}
+
+// Fade animations
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+// Slide animations
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(10px);
+  opacity: 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Print Styles
+// ─────────────────────────────────────────────────────────────────────────────
+
+@media print {
+  body {
+    background: white;
+  }
+
+  .q-header,
+  .q-footer,
+  .q-drawer {
+    display: none !important;
+  }
+}

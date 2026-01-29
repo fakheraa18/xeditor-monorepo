@@ -1,0 +1,20 @@
+{
+  "tools": [
+    "read_file",
+    "search_code",
+    "list_dir",
+    "file_exists",
+    "semantic_search",
+    "ask_question"
+  ],
+  "settings": {
+    "read_file": {
+      "thresholdChars": 50000,
+      "maxChars": 100000,
+      "maxLines": 2000,
+      "headLines": 100,
+      "middleLines": 50,
+      "tailLines": 100
+    }
+  }
+}

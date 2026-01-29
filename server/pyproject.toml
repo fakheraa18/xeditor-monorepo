@@ -1,0 +1,34 @@
+[project]
+name = "local-companion"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "websockets",
+    "litellm",
+    "python-dotenv",
+    "httpx",
+    # Parsing (local-only)
+    "tree-sitter",
+    "tree-sitter-languages",
+    # Embeddings (local-only)
+    "numpy",
+    "light-embed",
+    # Ignore patterns (.gitignore support)
+    "pathspec",
+    # File watching
+    "watchdog",
+]
+
+[project.optional-dependencies]
+build = [
+    "nuitka",
+    "ordered-set",
+    "zstandard",
+]
+gpu = [
+    "onnxruntime-gpu",
+]
