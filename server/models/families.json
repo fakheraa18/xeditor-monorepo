@@ -25,7 +25,7 @@
   },
   "kimi": {
     "name": "Kimi",
-    "versions": ["K2"]
+    "versions": ["K2.5", "K2"]
   },
   "glm": {
     "name": "GLM (Z.ai)",

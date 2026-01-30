@@ -142,23 +142,28 @@
     }
   },
   {
-    "id": "kimi-k2",
+    "id": "kimi-k2.5",
     "provider": "openai_compatible",
     "family": "kimi",
-    "name": "Kimi K2 Thinking Turbo",
-    "version": "K2",
-    "contextWindow": 200000,
+    "name": "Kimi K2.5",
+    "version": "K2.5",
+    "contextWindow": 256000,
     "capabilities": {
       "jsonMode": true,
       "functionCalling": true,
       "streaming": true,
-      "vision": false
+      "vision": true
     },
     "connection": {
-      "baseUrl": "https://api.moonshot.cn",
+      "baseUrl": "https://kimi-k2.ai/api",
       "path": "/v1/chat/completions",
       "auth": {
         "type": "bearer"
+      }
+    },
+    "extraPayload": {
+      "thinking": {
+        "type": "enabled"
       }
     }
   },
