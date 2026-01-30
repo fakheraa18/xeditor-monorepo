@@ -126,6 +126,16 @@ class GenericHTTPProvider(LLMProvider):
                                 if "choices" in data and len(data["choices"]) > 0:
                                     delta = data["choices"][0].get("delta", {})
                                     
+                                    # Extract thinking/reasoning from delta (Kimi API uses "reasoning" field)
+                                    if "reasoning" in delta and delta["reasoning"]:
+                                        reasoning_chunk = delta["reasoning"]
+                                        yield LLMEvent(type="thinking", content=reasoning_chunk)
+                                    
+                                    # Also check for "thinking" field (for other providers)
+                                    if "thinking" in delta and delta["thinking"]:
+                                        thinking_chunk = delta["thinking"]
+                                        yield LLMEvent(type="thinking", content=thinking_chunk)
+                                    
                                     if "content" in delta:
                                         chunk = delta["content"]
                                         full_content += chunk
