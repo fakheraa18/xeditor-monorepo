@@ -13,6 +13,7 @@ from .factory import get_provider, get_provider_for_request
 # Provider implementations
 from .openai import OpenAIProvider
 from .gemini import GeminiProvider, is_gemini_endpoint
+from .kimi import KimiProvider, is_kimi_endpoint
 from .lmstudio import LMStudioProvider
 from .vllm import VLLMProvider
 from .ollama import OllamaProvider
@@ -32,6 +33,8 @@ __all__ = [
     "OpenAIProvider",
     "GeminiProvider",
     "is_gemini_endpoint",
+    "KimiProvider",
+    "is_kimi_endpoint",
     "LMStudioProvider",
     "VLLMProvider",
     "OllamaProvider",

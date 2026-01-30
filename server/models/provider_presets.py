@@ -19,6 +19,7 @@ PROVIDER_REGISTRY: List[Dict[str, Any]] = [
     {"id": "vllm", "label": "vLLM"},
     {"id": "sglang", "label": "SGLang"},
     {"id": "openai_compatible", "label": "OpenAI Compatible"},
+    {"id": "kimi", "label": "Kimi"},
     {"id": "local_companion", "label": "Local Companion"},
 ]
 
@@ -189,6 +190,21 @@ def get_provider_preset(provider: str, base_url: Optional[str] = None, family: O
                     }
                 }
             
+            # Kimi API
+            if "kimi-k2.ai" in host or "kimi.moonshot.cn" in host:
+                return {
+                    "provider": "openai_compatible",
+                    "family": family or "kimi",
+                    "supportedAuthTypes": ["bearer"],
+                    "defaultAuthType": "bearer",
+                    "authDefaults": {
+                        "bearer": {
+                            "helpText": "Kimi API key. Get one from https://platform.moonshot.cn/"
+                        }
+                    },
+                    "recommendedHeaders": {}
+                }
+            
             # OpenRouter
             if "openrouter.ai" in host:
                 return {
@@ -316,6 +332,20 @@ def get_provider_preset(provider: str, base_url: Optional[str] = None, family: O
             "recommendedHeaders": {}
         }
     
+    if provider_lower == "kimi":
+        return {
+            "provider": "openai_compatible",
+            "family": family or "kimi",
+            "supportedAuthTypes": ["bearer"],
+            "defaultAuthType": "bearer",
+            "authDefaults": {
+                "bearer": {
+                    "helpText": "Kimi API key. Get one from https://platform.moonshot.cn/"
+                }
+            },
+            "recommendedHeaders": {}
+        }
+    
     if provider_lower == "local_companion":
         return {
             "provider": "local_companion",
@@ -355,6 +385,20 @@ def get_provider_preset(provider: str, base_url: Optional[str] = None, family: O
                 },
                 "parameterSchema": GEMINI_PARAMETER_SCHEMA,
                 "parameterDefaults": GEMINI_PARAMETER_DEFAULTS
+            }
+        
+        if family_lower == "kimi":
+            return {
+                "provider": "openai_compatible",
+                "family": "kimi",
+                "supportedAuthTypes": ["bearer"],
+                "defaultAuthType": "bearer",
+                "authDefaults": {
+                    "bearer": {
+                        "helpText": "Kimi API key. Get one from https://platform.moonshot.cn/"
+                    }
+                },
+                "recommendedHeaders": {}
             }
     
     return None
@@ -478,6 +522,19 @@ def list_provider_presets() -> List[Dict[str, Any]]:
             },
             "parameterSchema": GEMINI_PARAMETER_SCHEMA,
             "parameterDefaults": GEMINI_PARAMETER_DEFAULTS
+        },
+        {
+            "id": "kimi",
+            "provider": "openai_compatible",
+            "family": "kimi",
+            "supportedAuthTypes": ["bearer"],
+            "defaultAuthType": "bearer",
+            "authDefaults": {
+                "bearer": {
+                    "helpText": "Kimi API key. Get one from https://platform.moonshot.cn/"
+                }
+            },
+            "recommendedHeaders": {}
         },
         {
             "id": "openrouter",

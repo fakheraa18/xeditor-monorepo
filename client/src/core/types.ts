@@ -68,6 +68,7 @@ export type ModelProviderId =
   | 'vllm'
   | 'sglang'
   | 'openai_compatible'
+  | 'kimi'
   | 'local_companion';
 
 export type LocalCompanionRunner = 'vllm';

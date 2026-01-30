@@ -470,7 +470,6 @@ const selectedLocalCompanionRunner = computed<LocalCompanionRunner>({
   },
 });
 
-
 // Server-provided provider list
 const serverProviders = ref<ProviderDefinition[]>([]);
 
@@ -566,6 +565,13 @@ function updateAuthOptionsFromPreset(preset: ProviderPreset) {
 function applyPresetDefaults(preset: ProviderPreset) {
   if (!preset.authDefaults || !preset.defaultAuthType) {
     return;
+  }
+
+  // Update family from preset if not already set
+  // Don't update provider - preserve user's selection (e.g., "kimi" stays as "kimi" in UI)
+  // The provider will be converted to the correct value when saving based on the preset
+  if (preset.family && !modelData.value.family) {
+    modelData.value.family = preset.family;
   }
 
   const defaultType = preset.defaultAuthType;
@@ -743,6 +749,12 @@ watch(
     if (open) {
       if (props.modelToEdit) {
         modelData.value = JSON.parse(JSON.stringify(props.modelToEdit)) as ModelConfig;
+
+        // Convert provider aliases for display (e.g., "openai_compatible" + family "kimi" -> "kimi")
+        if (modelData.value.provider === 'openai_compatible' && modelData.value.family === 'kimi') {
+          modelData.value.provider = 'kimi';
+        }
+
         if (modelData.value.provider === 'local_companion' && !modelData.value.localCompanion) {
           modelData.value.localCompanion = { runner: 'vllm' };
         }
@@ -829,6 +841,7 @@ function getBaseUrlHint(provider: ModelProviderId): string {
     vllm: 'http://localhost:8000',
     sglang: 'http://localhost:30000',
     openai_compatible: 'Your server URL',
+    kimi: 'https://kimi-k2.ai/api',
     local_companion: 'Handled by Companion Store',
   };
   return hints[provider] || '';
@@ -843,6 +856,7 @@ function getPathHint(provider: ModelProviderId): string {
     vllm: '/v1/chat/completions',
     sglang: '/v1/chat/completions',
     openai_compatible: '/v1/chat/completions',
+    kimi: '/v1/chat/completions',
     local_companion: '/ws',
   };
   return hints[provider] || '';
@@ -919,6 +933,15 @@ async function saveModel() {
   if (!validateExtraPayload()) {
     $q.notify({ type: 'negative', message: 'Invalid extra payload JSON' });
     return;
+  }
+
+  // Convert provider aliases to actual provider values before saving
+  // e.g., "kimi" -> "openai_compatible" with family "kimi"
+  if (modelData.value.provider === 'kimi') {
+    modelData.value.provider = 'openai_compatible';
+    if (!modelData.value.family) {
+      modelData.value.family = 'kimi';
+    }
   }
 
   // Update auth from input fields

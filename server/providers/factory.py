@@ -9,6 +9,7 @@ from typing import Dict, Any
 from .base import LLMProvider
 from .openai import OpenAIProvider
 from .gemini import GeminiProvider, is_gemini_endpoint
+from .kimi import KimiProvider, is_kimi_endpoint
 from .lmstudio import LMStudioProvider
 from .vllm import VLLMProvider
 from .ollama import OllamaProvider
@@ -21,7 +22,7 @@ def get_provider(config: Dict[str, Any]) -> LLMProvider:
     
     Selection logic:
     1. Check explicit provider ID (vllm, lmstudio, local_companion)
-    2. Check base URL for provider-specific patterns (Gemini)
+    2. Check base URL for provider-specific patterns (Gemini, Kimi)
     3. Check for LiteLLM-supported providers (openai, anthropic, ollama)
     4. Fallback to generic OpenAI-compatible HTTP provider
     
@@ -58,6 +59,9 @@ def get_provider(config: Dict[str, Any]) -> LLMProvider:
     # 2. Check by base URL patterns
     if is_gemini_endpoint(base_url, path):
         return GeminiProvider(config)
+    
+    if is_kimi_endpoint(base_url, path):
+        return KimiProvider(config)
     
     # 3. Check for Ollama provider
     if provider_id == "ollama":

@@ -21,6 +21,25 @@ class GenericHTTPProvider(LLMProvider):
     but isn't explicitly handled by other providers.
     """
     
+    async def _parse_delta(self, delta: Dict[str, Any], data: Dict[str, Any]) -> AsyncGenerator[LLMEvent, None]:
+        """
+        Parse delta from OpenAI-compatible streaming response.
+        
+        This method can be overridden by subclasses to handle provider-specific
+        fields like reasoning/thinking extraction.
+        
+        Args:
+            delta: The delta object from choices[0].delta
+            data: The full data object from the streaming response
+            
+        Yields:
+            LLMEvent objects for content, thinking, etc.
+        """
+        if "content" in delta:
+            chunk = delta["content"]
+            if chunk:
+                yield LLMEvent(type="content", content=chunk)
+    
     async def stream(self, request: LLMRequest) -> AsyncGenerator[LLMEvent, None]:
         """Stream response from OpenAI-compatible endpoint."""
         base_url = self.get_base_url()
@@ -126,20 +145,11 @@ class GenericHTTPProvider(LLMProvider):
                                 if "choices" in data and len(data["choices"]) > 0:
                                     delta = data["choices"][0].get("delta", {})
                                     
-                                    # Extract thinking/reasoning from delta (Kimi API uses "reasoning" field)
-                                    if "reasoning" in delta and delta["reasoning"]:
-                                        reasoning_chunk = delta["reasoning"]
-                                        yield LLMEvent(type="thinking", content=reasoning_chunk)
-                                    
-                                    # Also check for "thinking" field (for other providers)
-                                    if "thinking" in delta and delta["thinking"]:
-                                        thinking_chunk = delta["thinking"]
-                                        yield LLMEvent(type="thinking", content=thinking_chunk)
-                                    
-                                    if "content" in delta:
-                                        chunk = delta["content"]
-                                        full_content += chunk
-                                        yield LLMEvent(type="content", content=chunk)
+                                    # Parse delta and yield events (provider-specific logic handled by subclasses)
+                                    async for event in self._parse_delta(delta, data):
+                                        if event.type == "content":
+                                            full_content += event.content or ""
+                                        yield event
                                     
                                     if "finish_reason" in data["choices"][0]:
                                         finish_reason = data["choices"][0]["finish_reason"]

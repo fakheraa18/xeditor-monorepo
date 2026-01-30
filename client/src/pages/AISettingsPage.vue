@@ -79,7 +79,10 @@
                   </q-item>
                 </q-list>
 
-                <div v-if="aiConfig.models.length === 0" class="q-mt-md text-center q-pa-xl text-grey-6">
+                <div
+                  v-if="aiConfig.models.length === 0"
+                  class="q-mt-md text-center q-pa-xl text-grey-6"
+                >
                   <q-icon name="memory" size="48px" />
                   <p class="q-mt-md">No models configured. Click + to add one.</p>
                 </div>
@@ -165,7 +168,12 @@
                           dense
                           icon="content_copy"
                           color="primary"
-                          @click.stop="() => { selectSetForEdit(set); cloneSet(); }"
+                          @click.stop="
+                            () => {
+                              selectSetForEdit(set);
+                              cloneSet();
+                            }
+                          "
                         >
                           <q-tooltip>Clone to edit</q-tooltip>
                         </q-btn>
@@ -294,11 +302,7 @@ import { useAiConfigStore } from '../stores/aiConfig';
 import { useLocalCompanionStore } from '../stores/localCompanion';
 import SetDesigner from '../components/ai/SetDesigner.vue';
 import ModelEditorDialog from '../components/ai/ModelEditorDialog.vue';
-import type {
-  ModelConfig,
-  ModelProviderId,
-  PromptSetMetadata,
-} from '../core/types';
+import type { ModelConfig, ModelProviderId, PromptSetMetadata } from '../core/types';
 
 const $q = useQuasar();
 const aiConfig = useAiConfigStore();
@@ -320,6 +324,7 @@ function getProviderIcon(provider: ModelProviderId): string {
     vllm: 'speed',
     sglang: 'developer_board',
     openai_compatible: 'api',
+    kimi: 'auto_awesome',
     local_companion: 'terminal',
   };
   return icons[provider] || 'memory';
@@ -460,7 +465,8 @@ function cloneSet() {
 
       $q.dialog({
         title: 'Select Model Family',
-        message: 'Which model family should be cloned? (The default set supports multiple families, but custom sets are limited to one.)',
+        message:
+          'Which model family should be cloned? (The default set supports multiple families, but custom sets are limited to one.)',
         options: {
           type: 'radio',
           model: defaultFamily,
