@@ -888,6 +888,176 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  /**
+   * Resolve a workspace path to folder, relative path, and absolute path.
+   * Workspace paths are in format: folderId/relativePath
+   * For root folders, path === folderId
+   */
+  function resolveWorkspacePath(workspacePath: string): {
+    folder: ProjectFolderRecord;
+    relativePath: string;
+    absolutePath: string;
+  } | null {
+    if (!activeProject.value) {
+      return null;
+    }
+
+    const parts = workspacePath.split('/');
+    const folderIdentifier = parts[0];
+
+    if (!folderIdentifier) {
+      return null;
+    }
+
+    // Resolve folder identifier (UUID or folder name) to folder ID
+    const rootFolderId = resolveFolderId(folderIdentifier, activeProject.value.folders);
+    if (!rootFolderId) {
+      return null;
+    }
+
+    const folder = activeProject.value.folders.find((f) => f.id === rootFolderId);
+    if (!folder) {
+      return null;
+    }
+
+    // Build relative path from folder root
+    const relativeParts = parts.slice(1);
+    let relativePath = relativeParts.join('/');
+
+    // For root folder, relative path is empty (or '.')
+    if (workspacePath === folder.id) {
+      relativePath = '.';
+    }
+
+    // Build absolute path
+    const normalizedSystemPath = folder.systemPath.replace(/\\/g, '/');
+    const absolutePath =
+      relativePath === '.' || relativePath === ''
+        ? normalizedSystemPath
+        : `${normalizedSystemPath}/${relativePath}`.replace(/\/+/g, '/');
+
+    return {
+      folder,
+      relativePath: relativePath === '.' ? '.' : relativePath,
+      absolutePath,
+    };
+  }
+
+  /**
+   * Copy absolute path to clipboard
+   */
+  function copyAbsolutePath(workspacePath: string): string {
+    const resolved = resolveWorkspacePath(workspacePath);
+    if (!resolved) {
+      throw new Error('Failed to resolve workspace path');
+    }
+    return resolved.absolutePath;
+  }
+
+  /**
+   * Copy relative path to clipboard (including root folder name)
+   */
+  function copyRelativePath(workspacePath: string): string {
+    const resolved = resolveWorkspacePath(workspacePath);
+    if (!resolved) {
+      throw new Error('Failed to resolve workspace path');
+    }
+
+    if (resolved.relativePath === '.' || resolved.relativePath === '') {
+      return resolved.folder.name;
+    }
+
+    return `${resolved.folder.name}/${resolved.relativePath}`;
+  }
+
+  /**
+   * Delete a file or directory at the given workspace path
+   */
+  async function deletePath(workspacePath: string, opts: { recursive: boolean }): Promise<void> {
+    const resolved = resolveWorkspacePath(workspacePath);
+    if (!resolved) {
+      throw new Error('Failed to resolve workspace path');
+    }
+
+    const companionStore = useLocalCompanionStore();
+    const response = await companionStore.request<{
+      success: boolean;
+      result?: {
+        path: string;
+        deleted: boolean;
+        needsReindex?: boolean;
+      };
+      error?: string;
+    }>('execute_tool', {
+      tool: 'delete_path',
+      args: {
+        path: resolved.absolutePath,
+        recursive: opts.recursive,
+      },
+      projectRoot: resolved.folder.systemPath,
+    });
+
+    if (!response.success) {
+      throw new Error(response.error ?? 'Failed to delete path');
+    }
+
+    // If needsReindex flag is set, trigger a full reindex
+    if (response.result?.needsReindex && activeProject.value) {
+      const indexingStore = useIndexingStore();
+      await indexingStore.reindex(activeProject.value.id);
+    }
+  }
+
+  /**
+   * Get file content from git HEAD (or specified ref)
+   */
+  async function getGitHeadContent(
+    workspacePath: string,
+    ref: string = 'HEAD',
+  ): Promise<{ baseContent: string; baseRef: string; existsInRef: boolean }> {
+    const resolved = resolveWorkspacePath(workspacePath);
+    if (!resolved) {
+      throw new Error('Failed to resolve workspace path');
+    }
+
+    // Only works for files
+    if (resolved.relativePath === '.' || resolved.relativePath.endsWith('/')) {
+      throw new Error('Git diff is only available for files, not directories');
+    }
+
+    const companionStore = useLocalCompanionStore();
+    const response = await companionStore.request<{
+      success: boolean;
+      result?: {
+        content: string;
+        ref: string;
+        existsInRef: boolean;
+      };
+      error?: string;
+    }>('execute_tool', {
+      tool: 'git_read_file_at_ref',
+      args: {
+        path: resolved.absolutePath,
+        ref,
+      },
+      projectRoot: resolved.folder.systemPath,
+    });
+
+    if (!response.success) {
+      throw new Error(response.error ?? 'Failed to read file from git');
+    }
+
+    if (!response.result) {
+      throw new Error('No result returned from git_read_file_at_ref');
+    }
+
+    return {
+      baseContent: response.result.content,
+      baseRef: response.result.ref,
+      existsInRef: response.result.existsInRef,
+    };
+  }
+
   function reset() {
     fileTree.value = [];
     isLoading.value = false;
@@ -926,6 +1096,11 @@ export const useProjectStore = defineStore('project', () => {
     readFileRange,
     getEmbeddingModelId,
     setEmbeddingModelId,
+    resolveWorkspacePath,
+    copyAbsolutePath,
+    copyRelativePath,
+    deletePath,
+    getGitHeadContent,
     reset,
   };
 });

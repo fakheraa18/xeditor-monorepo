@@ -265,6 +265,38 @@ export const useEditorStore = defineStore('editor', () => {
     return `diff-dialog-${Date.now()}`;
   }
 
+  async function openGitDiff(workspacePath: string, ref: string = 'HEAD'): Promise<void> {
+    const projectStore = useProjectStore();
+
+    try {
+      // Get current working tree content
+      const workingContent = await projectStore.readFileForEditor(workspacePath);
+
+      // Get HEAD content
+      const gitResult = await projectStore.getGitHeadContent(workspacePath, ref);
+
+      if (!gitResult.existsInRef) {
+        // File doesn't exist in HEAD, treat as new file
+        openDiffTab(workspacePath, '', workingContent, 'created');
+        return;
+      }
+
+      // Compare HEAD vs working tree
+      const changeType: 'created' | 'modified' | 'deleted' =
+        workingContent === gitResult.baseContent ? 'modified' : 'modified';
+
+      openDiffTab(workspacePath, gitResult.baseContent, workingContent, changeType);
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to show git diff',
+        caption: error instanceof Error ? error.message : 'Unknown error',
+        position: 'top',
+        timeout: 5000,
+      });
+    }
+  }
+
   function reset() {
     tabs.value = [];
     activeTabId.value = null;
@@ -450,6 +482,7 @@ export const useEditorStore = defineStore('editor', () => {
     setSelectedText,
     toggleViewMode,
     openDiffTab,
+    openGitDiff,
     reset,
     restoreState,
     handleExternalFileChanged,

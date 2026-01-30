@@ -503,7 +503,9 @@ class ToolExecutor:
             "run_command": lambda a: self.run_command(a, on_event, tool_call_id),
             "create_file": self.create_file,
             "delete_file": self.delete_file,
+            "delete_path": self.delete_path,
             "file_exists": self.file_exists,
+            "git_read_file_at_ref": self.git_read_file_at_ref,
             "search_replace": self.search_replace,
             "semantic_search": self.semantic_search,
             "create_plan": self.create_plan,
@@ -708,6 +710,93 @@ class ToolExecutor:
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
+    async def delete_path(self, args: Dict[str, Any]) -> ToolResult:
+        """
+        Delete a file or directory.
+        
+        Args:
+            args: Dictionary containing:
+                - path: Path to file or directory
+                - recursive: Boolean, required True for directories
+        """
+        path = args.get("path", "")
+        recursive = args.get("recursive", False)
+        
+        if not path:
+            return ToolResult(success=False, error="Path is required")
+
+        target_path = self.resolve_path(path)
+
+        if not target_path.exists():
+            return ToolResult(success=False, error=f"Path not found: {path}")
+
+        try:
+            # Handle file deletion
+            if target_path.is_file():
+                target_path.unlink()
+                await notify_file_changed(str(target_path), "deleted")
+                return ToolResult(
+                    success=True,
+                    result={"path": str(target_path), "deleted": True},
+                )
+            
+            # Handle directory deletion
+            if target_path.is_dir():
+                if not recursive:
+                    return ToolResult(
+                        success=False,
+                        error="recursive=True is required to delete directories",
+                    )
+                
+                # Walk directory and collect file paths for notification
+                # Cap at 2000 files to avoid flooding with notifications
+                MAX_NOTIFICATION_FILES = 2000
+                deleted_files: List[str] = []
+                
+                def collect_files(dir_path: Path) -> None:
+                    """Recursively collect file paths."""
+                    if len(deleted_files) >= MAX_NOTIFICATION_FILES:
+                        return
+                    try:
+                        for item in dir_path.iterdir():
+                            if item.is_file():
+                                if len(deleted_files) < MAX_NOTIFICATION_FILES:
+                                    deleted_files.append(str(item))
+                            elif item.is_dir():
+                                collect_files(item)
+                    except (PermissionError, OSError):
+                        pass
+                
+                # Collect files before deletion
+                collect_files(target_path)
+                
+                # Delete the directory
+                shutil.rmtree(target_path)
+                
+                # Notify for each deleted file (up to cap)
+                for file_path_str in deleted_files:
+                    await notify_file_changed(file_path_str, "deleted")
+                
+                # If we hit the cap, signal that reindex is needed
+                needs_reindex = len(deleted_files) >= MAX_NOTIFICATION_FILES
+                
+                return ToolResult(
+                    success=True,
+                    result={
+                        "path": str(target_path),
+                        "deleted": True,
+                        "filesDeleted": len(deleted_files),
+                        "needsReindex": needs_reindex,
+                    },
+                )
+            
+            return ToolResult(
+                success=False,
+                error=f"Path is neither a file nor a directory: {path}",
+            )
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
     async def file_exists(self, args: Dict[str, Any]) -> ToolResult:
         """Check if a file exists."""
         path = args.get("path", "")
@@ -724,6 +813,97 @@ class ToolExecutor:
                 "isDirectory": file_path.is_dir() if file_path.exists() else False,
             },
         )
+
+    async def git_read_file_at_ref(self, args: Dict[str, Any]) -> ToolResult:
+        """
+        Read file content from git at a specific ref (e.g., HEAD).
+        
+        Args:
+            args: Dictionary containing:
+                - path: Absolute path to the file
+                - ref: Git ref (default: "HEAD")
+        """
+        path = args.get("path", "")
+        ref = args.get("ref", "HEAD")
+        
+        if not path:
+            return ToolResult(success=False, error="Path is required")
+
+        file_path = self.resolve_path(path)
+        
+        if not file_path.exists():
+            return ToolResult(success=False, error=f"File not found: {path}")
+
+        try:
+            # Determine git repository root
+            # Use the directory containing the file as starting point
+            file_dir = file_path.parent
+            
+            # Find git root by running git rev-parse --show-toplevel
+            git_root_result = subprocess.run(
+                ["git", "-C", str(file_dir), "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            
+            if git_root_result.returncode != 0:
+                return ToolResult(
+                    success=False,
+                    error=f"Not a git repository or git not available: {git_root_result.stderr}",
+                )
+            
+            git_root = Path(git_root_result.stdout.strip())
+            
+            # Compute relative path from git root
+            try:
+                rel_path = file_path.relative_to(git_root)
+            except ValueError:
+                return ToolResult(
+                    success=False,
+                    error=f"File is not within git repository: {path}",
+                )
+            
+            # Use forward slashes for git paths (git expects this)
+            git_path = str(rel_path).replace("\\", "/")
+            
+            # Read file content from git
+            git_show_result = subprocess.run(
+                ["git", "-C", str(git_root), "show", f"{ref}:{git_path}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            
+            if git_show_result.returncode != 0:
+                # File doesn't exist in this ref (might be untracked/new)
+                return ToolResult(
+                    success=True,
+                    result={
+                        "content": "",
+                        "ref": ref,
+                        "existsInRef": False,
+                    },
+                )
+            
+            return ToolResult(
+                success=True,
+                result={
+                    "content": git_show_result.stdout,
+                    "ref": ref,
+                    "existsInRef": True,
+                },
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(
+                success=False,
+                error="Git command timed out",
+            )
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                error=f"Failed to read file from git: {str(e)}",
+            )
 
     async def search_replace(self, args: Dict[str, Any]) -> ToolResult:
         """

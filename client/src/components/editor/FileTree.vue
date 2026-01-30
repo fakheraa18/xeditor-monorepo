@@ -37,7 +37,9 @@
               </q-item-section>
               <q-item-section v-else>
                 <q-item-label>{{ opt.name }}</q-item-label>
-                <q-item-label caption>{{ opt.folderCount }} folder{{ opt.folderCount !== 1 ? 's' : '' }}</q-item-label>
+                <q-item-label caption
+                  >{{ opt.folderCount }} folder{{ opt.folderCount !== 1 ? 's' : '' }}</q-item-label
+                >
               </q-item-section>
               <q-item-section v-if="opt.id !== '__create_new__'" side>
                 <q-btn
@@ -83,15 +85,7 @@
             {{ hasActiveProject ? 'Add Folder to Workspace' : 'Create or open a project first' }}
           </q-tooltip>
         </q-btn>
-        <q-btn
-          flat
-          dense
-          round
-          size="sm"
-          icon="refresh"
-          @click="refreshTree"
-          :loading="isLoading"
-        >
+        <q-btn flat dense round size="sm" icon="refresh" @click="refreshTree" :loading="isLoading">
           <q-tooltip>Refresh File Tree</q-tooltip>
         </q-btn>
         <q-btn
@@ -148,7 +142,6 @@
         </div>
       </div>
 
-
       <q-virtual-scroll
         v-if="hasFolders"
         :items="flattenedNodes"
@@ -163,6 +156,8 @@
             ]"
             :style="{ paddingLeft: `${item.level * 16 + 8}px` }"
             @click="handleItemClick(item)"
+            @dblclick="handleItemDoubleClick(item)"
+            @contextmenu.prevent="handleContextMenu($event, item)"
           >
             <q-icon
               v-if="item.type === 'directory' && item.hasChildren"
@@ -174,13 +169,16 @@
             <span v-else class="q-mr-xs tree-arrow-spacer"></span>
 
             <q-icon
-              :name="item.type === 'directory'
-                ? getFolderIcon(item.isExpanded, item.isRoot).icon
-                : getFileIcon(item.label).icon"
+              :name="
+                item.type === 'directory'
+                  ? getFolderIcon(item.isExpanded, item.isRoot).icon
+                  : getFileIcon(item.label).icon
+              "
               :style="{
-                color: item.type === 'directory'
-                  ? getFolderIcon(item.isExpanded, item.isRoot).color
-                  : getFileIcon(item.label).color
+                color:
+                  item.type === 'directory'
+                    ? getFolderIcon(item.isExpanded, item.isRoot).color
+                    : getFileIcon(item.label).color,
               }"
               size="16px"
               class="tree-item-icon"
@@ -203,18 +201,59 @@
               @click.stop="handleRootAction(item.path)"
             >
               <q-tooltip>
-                {{ folderConnected(item.path) ? 'Remove folder from workspace' : 'Reconnect folder permission' }}
+                {{
+                  folderConnected(item.path)
+                    ? 'Remove folder from workspace'
+                    : 'Reconnect folder permission'
+                }}
               </q-tooltip>
             </q-btn>
           </div>
         </template>
       </q-virtual-scroll>
     </q-scroll-area>
+
+    <!-- Context Menu -->
+    <q-menu ref="contextMenuRef" @hide="contextNode = null" touch-position context-menu>
+      <q-list style="min-width: 200px; max-height: none">
+        <q-item clickable v-close-popup @click="handleCopyRelativePath">
+          <q-item-section avatar>
+            <q-icon name="content_copy" size="16px" />
+          </q-item-section>
+          <q-item-section>Copy Relative Path</q-item-section>
+        </q-item>
+        <q-item clickable v-close-popup @click="handleCopyAbsolutePath">
+          <q-item-section avatar>
+            <q-icon name="content_copy" size="16px" />
+          </q-item-section>
+          <q-item-section>Copy Absolute Path</q-item-section>
+        </q-item>
+        <q-separator />
+        <q-item v-if="contextNode?.type === 'file'" clickable v-close-popup @click="handleShowDiff">
+          <q-item-section avatar>
+            <q-icon name="compare_arrows" size="16px" />
+          </q-item-section>
+          <q-item-section>Show Diff vs HEAD</q-item-section>
+        </q-item>
+        <q-separator />
+        <q-item clickable v-close-popup @click="handleDelete">
+          <q-item-section avatar>
+            <q-icon name="delete" size="16px" color="negative" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Delete</q-item-label>
+            <q-item-label caption v-if="contextNode?.type === 'directory'">
+              Delete recursively
+            </q-item-label>
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </q-menu>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useEditorStore } from '../../stores/editor';
@@ -257,10 +296,19 @@ const expandedPaths = ref<Set<string>>(new Set());
 // Folder picker dialog state
 const showFolderPicker = ref(false);
 
+// Context menu state
+const contextNode = ref<FlattenedNode | null>(null);
+const contextMenuRef = ref<{ show: (evt?: Event) => void; hide: () => void } | null>(null);
+
 const projectOptions = computed(() => {
   const options = [...projects.value];
   // Always include "Create New Project..." option
-  options.push({ id: '__create_new__', name: 'Create New Project...', folderCount: 0, updatedAt: 0 });
+  options.push({
+    id: '__create_new__',
+    name: 'Create New Project...',
+    folderCount: 0,
+    updatedAt: 0,
+  });
   return options;
 });
 const selectedProjectId = ref<string | null>(activeProjectId.value);
@@ -269,7 +317,7 @@ watch(
   () => activeProjectId.value,
   (next) => {
     selectedProjectId.value = next;
-  }
+  },
 );
 
 watch(
@@ -283,7 +331,7 @@ watch(
     }
     if (next === activeProjectId.value) return;
     void projectStore.setActiveProject(next);
-  }
+  },
 );
 
 const flattenedNodes = computed<FlattenedNode[]>(() => {
@@ -373,8 +421,7 @@ function handleRootAction(folderId: string): void {
 }
 
 function handleCreateProject() {
-  $q
-    .dialog({
+  $q.dialog({
     title: 'New Project',
     message: 'Project name',
     prompt: {
@@ -384,12 +431,11 @@ function handleCreateProject() {
     },
     cancel: true,
     persistent: true,
-    })
-    .onOk((val: string) => {
-      const name = val.trim();
-      if (!name) return;
-      void projectStore.createProject(name);
-    });
+  }).onOk((val: string) => {
+    const name = val.trim();
+    if (!name) return;
+    void projectStore.createProject(name);
+  });
 }
 
 function handleDeleteProject(projectId: string) {
@@ -406,24 +452,22 @@ function handleDeleteProject(projectId: string) {
     return;
   }
 
-  $q
-    .dialog({
-      title: 'Delete Project',
-      message: `Are you sure you want to delete "${project.name}"? This will permanently delete all project data including indexes, vectors, and cache. This action cannot be undone.`,
-      persistent: true,
-      ok: {
-        label: 'Delete',
-        color: 'negative',
-        flat: true,
-      },
-      cancel: {
-        label: 'Cancel',
-        flat: true,
-      },
-    })
-    .onOk(() => {
-      void projectStore.deleteProjectById(projectId);
-    });
+  $q.dialog({
+    title: 'Delete Project',
+    message: `Are you sure you want to delete "${project.name}"? This will permanently delete all project data including indexes, vectors, and cache. This action cannot be undone.`,
+    persistent: true,
+    ok: {
+      label: 'Delete',
+      color: 'negative',
+      flat: true,
+    },
+    cancel: {
+      label: 'Cancel',
+      flat: true,
+    },
+  }).onOk(() => {
+    void projectStore.deleteProjectById(projectId);
+  });
 }
 
 function toggleExpand(item: FlattenedNode): void {
@@ -436,9 +480,10 @@ function toggleExpand(item: FlattenedNode): void {
 }
 
 function handleItemClick(item: FlattenedNode): void {
-  if (item.type === 'file') {
-    void editorStore.openFile(item.path);
-    return;
+  // Close context menu if open
+  if (contextMenuRef.value && contextNode.value) {
+    contextMenuRef.value.hide();
+    contextNode.value = null;
   }
 
   if (item.type === 'directory' && item.hasChildren) {
@@ -446,28 +491,32 @@ function handleItemClick(item: FlattenedNode): void {
   }
 }
 
+function handleItemDoubleClick(item: FlattenedNode): void {
+  if (item.type === 'file') {
+    void editorStore.openFile(item.path);
+  }
+}
+
 function confirmRemoveFolder(folderId: string): void {
   const folder = activeProject.value?.folders.find((f) => f.id === folderId);
   if (!folder) return;
 
-  $q
-    .dialog({
-      title: 'Remove Folder',
-      message: `Are you sure you want to remove "${folder.name}" from the workspace? This will remove the folder from the workspace and delete its indexed data/vectors. Files on disk are not deleted.`,
-      persistent: true,
-      ok: {
-        label: 'Remove',
-        color: 'negative',
-        flat: true,
-      },
-      cancel: {
-        label: 'Cancel',
-        flat: true,
-      },
-    })
-    .onOk(() => {
-      removeFolder(folderId);
-    });
+  $q.dialog({
+    title: 'Remove Folder',
+    message: `Are you sure you want to remove "${folder.name}" from the workspace? This will remove the folder from the workspace and delete its indexed data/vectors. Files on disk are not deleted.`,
+    persistent: true,
+    ok: {
+      label: 'Remove',
+      color: 'negative',
+      flat: true,
+    },
+    cancel: {
+      label: 'Cancel',
+      flat: true,
+    },
+  }).onOk(() => {
+    removeFolder(folderId);
+  });
 }
 
 function removeFolder(folderName: string) {
@@ -495,6 +544,146 @@ function handlePauseIndexing() {
 
 function handleCancelIndexing() {
   indexingStore.cancelIndexing();
+}
+
+function handleContextMenu(event: MouseEvent, item: FlattenedNode): void {
+  // Only show menu on right-click (button 2) or contextmenu event
+  // Check if this is actually a right-click (button 2) or contextmenu event
+  if (event.type === 'click' && event.button !== 2) {
+    return; // Ignore left-clicks
+  }
+
+  // Prevent default browser context menu
+  event.preventDefault();
+  event.stopPropagation();
+
+  contextNode.value = item;
+
+  // Show menu immediately at cursor position
+  // Quasar's QMenu will use event.clientX and event.clientY for positioning
+  if (contextMenuRef.value) {
+    contextMenuRef.value.show(event);
+  } else {
+    // If ref not ready, wait for it
+    void nextTick(() => {
+      if (contextMenuRef.value) {
+        contextMenuRef.value.show(event);
+      }
+    });
+  }
+}
+
+async function handleCopyRelativePath(): Promise<void> {
+  if (!contextNode.value) return;
+
+  try {
+    const path = projectStore.copyRelativePath(contextNode.value.path);
+    const pathString = String(path); // Ensure it's a string
+    await navigator.clipboard.writeText(pathString);
+    // Close menu after copying
+    if (contextMenuRef.value) {
+      contextMenuRef.value.hide();
+    }
+    $q.notify({
+      type: 'positive',
+      message: 'Relative path copied to clipboard',
+      position: 'bottom',
+      timeout: 1500,
+    });
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to copy relative path',
+      caption: error instanceof Error ? error.message : 'Unknown error',
+      position: 'top',
+      timeout: 3000,
+    });
+  }
+}
+
+async function handleCopyAbsolutePath(): Promise<void> {
+  if (!contextNode.value) return;
+
+  try {
+    const path = projectStore.copyAbsolutePath(contextNode.value.path);
+    const pathString = String(path); // Ensure it's a string
+    await navigator.clipboard.writeText(pathString);
+    // Close menu after copying
+    if (contextMenuRef.value) {
+      contextMenuRef.value.hide();
+    }
+    $q.notify({
+      type: 'positive',
+      message: 'Absolute path copied to clipboard',
+      position: 'bottom',
+      timeout: 1500,
+    });
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to copy absolute path',
+      caption: error instanceof Error ? error.message : 'Unknown error',
+      position: 'top',
+      timeout: 3000,
+    });
+  }
+}
+
+async function handleShowDiff(): Promise<void> {
+  if (!contextNode.value || contextNode.value.type !== 'file') return;
+
+  try {
+    await editorStore.openGitDiff(contextNode.value.path);
+  } catch (error) {
+    // Error handling is done in openGitDiff
+    console.error('Failed to show git diff:', error);
+  }
+}
+
+function handleDelete(): void {
+  if (!contextNode.value) return;
+
+  const item = contextNode.value;
+  const itemName = item.label;
+  const isDirectory = item.type === 'directory';
+
+  $q.dialog({
+    title: isDirectory ? 'Delete Directory' : 'Delete File',
+    message: isDirectory
+      ? `Are you sure you want to delete "${itemName}" and all its contents? This action cannot be undone.`
+      : `Are you sure you want to delete "${itemName}"? This action cannot be undone.`,
+    persistent: true,
+    ok: {
+      label: 'Delete',
+      color: 'negative',
+      flat: true,
+    },
+    cancel: {
+      label: 'Cancel',
+      flat: true,
+    },
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await projectStore.deletePath(item.path, { recursive: isDirectory });
+        $q.notify({
+          type: 'positive',
+          message: `${isDirectory ? 'Directory' : 'File'} deleted successfully`,
+          position: 'top',
+          timeout: 2000,
+        });
+        // File tree will refresh automatically via file_changed events
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: `Failed to delete ${isDirectory ? 'directory' : 'file'}`,
+          caption: error instanceof Error ? error.message : 'Unknown error',
+          position: 'top',
+          timeout: 5000,
+        });
+      }
+    })();
+  });
 }
 </script>
 
