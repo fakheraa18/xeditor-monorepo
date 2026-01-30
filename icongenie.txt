@@ -1,0 +1,4 @@
+mac
+npx -y @quasar/icongenie generate -m electron -f icns -i src-electron/icons/icon.png
+windows 
+npx -y @quasar/icongenie generate -m electron -f ico -i src-electron/icons/icon.png

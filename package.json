@@ -22,12 +22,14 @@
     "ship:linux": "node ./scripts/ship-electron.mjs --platform=linux",
     "ship:linux:fast": "node ./scripts/ship-electron.mjs --platform=linux --skip-server",
     "ship:mac": "node ./scripts/ship-electron.mjs --platform=mac",
+    "ship:mac:fast": "node ./scripts/ship-electron.mjs --platform=mac --skip-server",
     "ship:win": "node ./scripts/ship-electron.mjs --platform=win",
+    "ship:win:fast": "node ./scripts/ship-electron.mjs --platform=win --skip-server",
     "package:dist": "bash ./scripts/package-dist.sh",
     "package:electron": "bash ./scripts/package-electron-dist.sh"
   },
   "engines": {
     "node": "^28 || ^26 || ^24 || ^22 || ^20",
     "npm": ">= 6.13.4"
-  } 
+  }
 }
