@@ -230,12 +230,32 @@ function hasToolResult(toolCallId: string): boolean {
   return toolResults.value.has(toolCallId);
 }
 
+// Check if delegate_task has completed via sub_agent_end event
+function hasSubAgentEndForToolCall(toolCallId: string): boolean {
+  // For delegate_task, check if there's a sub_agent_end event with this tool call as parentId
+  return props.traceEvents.some(
+    (e) => e.type === 'sub_agent_end' && 'parentId' in e && e.parentId === toolCallId && !e.error, // Only count as success if no error
+  );
+}
+
 function getToolCallStatus(toolCallId: string): string {
   if (isToolRunning(toolCallId)) return 'tool-running';
-  // If not streaming and no tool_result exists, treat as error (tool didn't complete properly)
-  if (!props.isStreaming && !hasToolResult(toolCallId)) return 'tool-error';
-  if (hasToolError(toolCallId)) return 'tool-error';
-  return 'tool-complete';
+
+  // Check for tool_result first
+  if (hasToolResult(toolCallId)) {
+    if (hasToolError(toolCallId)) return 'tool-error';
+    return 'tool-complete';
+  }
+
+  // For delegate_task, check if sub-agent completed successfully
+  if (hasSubAgentEndForToolCall(toolCallId)) {
+    return 'tool-complete';
+  }
+
+  // If not streaming and no tool_result or sub_agent_end exists, treat as error
+  if (!props.isStreaming) return 'tool-error';
+
+  return 'tool-running';
 }
 
 // Format brief arguments for display

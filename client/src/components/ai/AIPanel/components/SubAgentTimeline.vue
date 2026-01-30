@@ -177,7 +177,12 @@ const isRunning = computed(() => {
 });
 
 const hasError = computed(() => {
-  return props.endEvent?.error !== undefined;
+  // Only treat as error if error is explicitly set to a truthy string value
+  return !!(
+    props.endEvent?.error &&
+    typeof props.endEvent.error === 'string' &&
+    props.endEvent.error.trim().length > 0
+  );
 });
 
 // Get child items (events that belong to this sub-agent)
