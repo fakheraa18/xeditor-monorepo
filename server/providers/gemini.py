@@ -148,6 +148,81 @@ class GeminiProvider(LLMProvider):
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 async with client.stream("POST", url, json=gemini_body, headers=headers) as response:
+                    # Check for error status before reading stream
+                    if response.status_code >= 400:
+                        # For streaming responses, errors can be in SSE format or raw JSON
+                        error_messages = []
+                        raw_lines = []
+                        async for line in response.aiter_lines():
+                            raw_lines.append(line)
+                            if not line.strip():
+                                continue
+                        
+                        # Try to parse as complete JSON (raw JSON lines joined)
+                        raw_content = "\n".join(raw_lines)
+                        try:
+                            error_data = json.loads(raw_content)
+                            if "error" in error_data:
+                                error_obj = error_data["error"]
+                                if isinstance(error_obj, dict):
+                                    error_msg = error_obj.get("message", "")
+                                    if error_msg:
+                                        error_messages.append(error_msg)
+                                    else:
+                                        error_messages.append(json.dumps(error_obj))
+                                else:
+                                    error_messages.append(str(error_obj))
+                        except json.JSONDecodeError:
+                            # If not valid JSON, try parsing SSE format
+                            for line in raw_lines:
+                                if not line.strip():
+                                    continue
+                                # Gemini SSE format: "data: {json}"
+                                if line.startswith("data: "):
+                                    data_str = line[6:].strip()
+                                    if data_str == "[DONE]":
+                                        break
+                                    try:
+                                        data = json.loads(data_str)
+                                        if "error" in data:
+                                            error_obj = data["error"]
+                                            if isinstance(error_obj, dict):
+                                                error_msg = error_obj.get("message", "")
+                                                if error_msg:
+                                                    error_messages.append(error_msg)
+                                                else:
+                                                    error_messages.append(json.dumps(error_obj))
+                                            else:
+                                                error_messages.append(str(error_obj))
+                                        elif "promptFeedback" in data and "blockReason" in data["promptFeedback"]:
+                                            error_messages.append(f"Blocked: {data['promptFeedback'].get('blockReason', 'unknown')}")
+                                    except json.JSONDecodeError:
+                                        pass
+                        
+                        error_body = "\n".join(error_messages) if error_messages else ""
+                        if response.status_code == 400:
+                            error_preview = error_body[:500] if error_body else ""
+                            error_message = (
+                                f"Bad request (400). Please check your request configuration. "
+                                f"{'Response: ' + error_preview + ('...' if len(error_body) > 500 else '') if error_preview else ''}"
+                            )
+                        elif response.status_code == 401:
+                            error_message = (
+                                "Authentication failed (401 Unauthorized). Please check your Gemini API key. "
+                                "Ensure authentication is properly configured in the model settings."
+                            )
+                        elif response.status_code == 403:
+                            error_message = "Access forbidden (403). Please check your API key permissions."
+                        elif response.status_code == 404:
+                            error_message = "Endpoint not found (404). Please check the API URL and path configuration."
+                        else:
+                            error_preview = error_body[:200] if error_body else ""
+                            error_message = (
+                                f"HTTP error {response.status_code}: {error_preview if error_preview else 'Unknown error'}"
+                            )
+                        yield LLMEvent(type="error", error=error_message)
+                        return
+                    
                     response.raise_for_status()
                     
                     full_content = ""
@@ -207,6 +282,8 @@ class GeminiProvider(LLMProvider):
                     )
                     
         except httpx.HTTPStatusError as http_error:
+            # This should rarely happen now since we handle errors before raise_for_status
+            # But keep as fallback for non-streaming errors
             status_code = http_error.response.status_code
             error_body = ""
             try:
@@ -215,11 +292,10 @@ class GeminiProvider(LLMProvider):
                 pass
             
             if status_code == 400:
-                # Include response body for 400s to help debug configuration issues
                 error_preview = error_body[:300] if error_body else ""
                 error_message = (
                     f"Bad request (400). Please check your request configuration. "
-                    f"{'Response: ' + error_preview + ('...' if len(error_body or '') > 300 else '') if error_preview else ''}"
+                    f"{'Response: ' + error_preview + ('...' if len(error_body) > 300 else '') if error_preview else ''}"
                 )
             elif status_code == 401:
                 error_message = (
