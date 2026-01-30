@@ -204,6 +204,27 @@ class Agent:
                         
                         accumulated_content += content_chunk
                         
+                        # CRITICAL: Get streamable content FIRST to buffer partial tool tokens
+                        # This prevents partial tool call tokens (like <|tool) from leaking into UI
+                        safe_content, is_tool_pending = self.parser.get_streamable_content(accumulated_content)
+                        
+                        # Stream safe content (content before any partial tool tokens)
+                        # Even if is_tool_pending is True, safe_content contains content that's safe to stream
+                        if safe_content and len(safe_content) > len(final_text):
+                            new_safe_content = safe_content[len(final_text):]
+                            if new_safe_content:
+                                # Guard: strip thinking tags if provider already emitted structured thinking
+                                if received_thinking_from_provider:
+                                    new_safe_content = re.sub(r'<think>.*?</think>', '', new_safe_content, flags=re.DOTALL | re.IGNORECASE)
+                                    if not new_safe_content.strip():
+                                        # Skip if content was only thinking
+                                        pass
+                                    else:
+                                        await on_event("content_chunk", {"content": new_safe_content})
+                                else:
+                                    await on_event("content_chunk", {"content": new_safe_content})
+                                final_text = safe_content
+                        
                         # Parse incrementally for tool calls and patches
                         parsed = self.parser.parse(accumulated_content)
                         
@@ -224,19 +245,6 @@ class Agent:
                         if parsed.tool_call:
                             last_parsed = parsed
                             break
-                        
-                        # Stream content (final text)
-                        if parsed.final_text and parsed.final_text != final_text:
-                            new_content = parsed.final_text[len(final_text):]
-                            final_text = parsed.final_text
-                            if new_content:
-                                # Guard: strip thinking tags if provider already emitted structured thinking
-                                if received_thinking_from_provider:
-                                    new_content = re.sub(r'<think>.*?</think>', '', new_content, flags=re.DOTALL | re.IGNORECASE)
-                                    if not new_content.strip():
-                                        continue
-                                
-                                await on_event("content_chunk", {"content": new_content})
                     
                     elif event.type == "end":
                         usage = event.usage

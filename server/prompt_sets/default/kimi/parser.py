@@ -40,11 +40,14 @@ class KimiParser(ResponseParser):
         re.IGNORECASE,
     )
 
-    # Early detection for streaming buffering. We detect `<|tool_` which covers:
-    # - <|tool_calls_section_begin|>
-    # - <|tool_call_begin|>
-    # - <|tool_call_argument_begin|>
-    TOOL_TOKEN_START = re.compile(r"<\|tool_", re.IGNORECASE)
+    # Early detection for streaming buffering. We detect `<|` which is the start of any Kimi token.
+    # This catches partial tokens early to prevent them from appearing in UI:
+    # - <| (partial token start)
+    # - <|tool (partial tool token)
+    # - <|tool_calls_section_begin|> (complete token)
+    # - <|tool_call_begin|> (complete token)
+    # Similar to how GPT/Gemini parsers catch `<|` early for Harmony tokens
+    TOOL_TOKEN_START = re.compile(r"<\|", re.IGNORECASE)
 
     def _extract_json_object(self, text: str, start_pos: int) -> Optional[str]:
         """
@@ -197,8 +200,9 @@ class KimiParser(ResponseParser):
 
     def get_streamable_content(self, content: str) -> Tuple[str, bool]:
         """
-        Buffer content from the first `<|tool_` token onward until we have
-        a complete tool-call section.
+        Buffer content from the first `<|` token onward until we have
+        a complete tool-call section. This prevents partial Kimi tokens
+        (like `<|`, `<|tool`, etc.) from leaking into the UI.
         """
         section_match = self.TOOL_CALL_SECTION_PATTERN.search(content)
         if section_match:
