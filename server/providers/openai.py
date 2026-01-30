@@ -11,7 +11,7 @@ from typing import AsyncGenerator, Dict, Any
 import litellm
 
 from .base import LLMProvider
-from .events import LLMEvent, LLMRequest
+from .events import LLMEvent, LLMRequest, TokenUsage
 
 
 class OpenAIProvider(LLMProvider):
@@ -85,11 +85,13 @@ class OpenAIProvider(LLMProvider):
                         finish_reason = chunk.choices[0].finish_reason
                 
                 if hasattr(chunk, 'usage') and chunk.usage:
-                    usage = {
-                        "prompt_tokens": chunk.usage.prompt_tokens,
-                        "completion_tokens": chunk.usage.completion_tokens,
-                        "total_tokens": chunk.usage.total_tokens,
-                    }
+                    # Normalize usage using TokenUsage dataclass
+                    token_usage = TokenUsage(
+                        prompt_tokens=chunk.usage.prompt_tokens or 0,
+                        completion_tokens=chunk.usage.completion_tokens or 0,
+                        total_tokens=chunk.usage.total_tokens or 0,
+                    )
+                    usage = token_usage.to_dict()
             
             yield LLMEvent(
                 type="end",

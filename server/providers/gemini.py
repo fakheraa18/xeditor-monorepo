@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from .base import LLMProvider
-from .events import LLMEvent, LLMRequest
+from .events import LLMEvent, LLMRequest, TokenUsage
 
 
 def is_gemini_endpoint(base_url: str, path: str = "") -> bool:
@@ -305,12 +305,9 @@ class GeminiProvider(LLMProvider):
                                             finish_reason = "stop"
                                 
                                 if "usageMetadata" in data:
-                                    usage_meta = data["usageMetadata"]
-                                    usage = {
-                                        "prompt_tokens": usage_meta.get("promptTokenCount", 0),
-                                        "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
-                                        "total_tokens": usage_meta.get("totalTokenCount", 0),
-                                    }
+                                    # Normalize usage using TokenUsage dataclass
+                                    token_usage = TokenUsage.from_gemini(data["usageMetadata"])
+                                    usage = token_usage.to_dict() if token_usage else None
                             except json.JSONDecodeError:
                                 pass
                     

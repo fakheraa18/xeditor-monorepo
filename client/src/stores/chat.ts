@@ -8,6 +8,8 @@ import type {
   ContextItem,
   ProjectId,
   TraceEventFileChange,
+  SessionTokenStats,
+  ContextUsage,
 } from '../core/types';
 import { useProjectStore } from './project';
 import { useLocalCompanionStore } from './localCompanion';
@@ -23,6 +25,51 @@ export const useChatStore = defineStore('chat', () => {
 
   const hasCurrentSession = computed(() => currentSession.value !== null);
   const currentTurnCount = computed(() => currentSession.value?.turns.length ?? 0);
+
+  // Session token totals - computed from all turns
+  const sessionTokenStats = computed<SessionTokenStats>(() => {
+    const stats: SessionTokenStats = {
+      totalTokens: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      byFamily: {},
+    };
+
+    if (!currentSession.value) return stats;
+
+    for (const turn of currentSession.value.turns) {
+      const usage = turn.usage;
+      if (usage) {
+        stats.totalTokens += usage.totalTokens;
+        stats.promptTokens += usage.promptTokens;
+        stats.completionTokens += usage.completionTokens;
+      }
+
+      // Track per-family usage
+      const family = turn.modelSnapshot?.family || turn.modelId.split('-')[0] || 'unknown';
+      if (usage) {
+        if (!stats.byFamily[family]) {
+          stats.byFamily[family] = {
+            totalTokens: 0,
+            promptTokens: 0,
+            completionTokens: 0,
+          };
+        }
+        stats.byFamily[family].totalTokens += usage.totalTokens;
+        stats.byFamily[family].promptTokens += usage.promptTokens;
+        stats.byFamily[family].completionTokens += usage.completionTokens;
+      }
+    }
+
+    return stats;
+  });
+
+  // Last turn's context usage - useful for showing current context fill
+  const lastTurnContextUsage = computed<ContextUsage | null>(() => {
+    if (!currentSession.value || currentSession.value.turns.length === 0) return null;
+    const lastTurn = currentSession.value.turns[currentSession.value.turns.length - 1];
+    return lastTurn?.contextUsage || null;
+  });
 
   // ─────────────────────────────────────────────────────────────────────────
   // Initialization
@@ -239,11 +286,13 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // Prepare model config for backend
+    // Ensure contextWindow is included (default to 0 if not set)
     const modelConfig = {
       id: activeModel.id,
       provider: activeModel.provider,
       family: activeModel.family,
       version: activeModel.version,
+      contextWindow: activeModel.contextWindow ?? 0, // Include contextWindow for context usage tracking
       connection: activeModel.connection,
       localCompanion: activeModel.localCompanion,
       setId: aiConfig.activeSetId,
@@ -361,6 +410,26 @@ export const useChatStore = defineStore('chat', () => {
             promptTokens?: number;
             completionTokens?: number;
             totalTokens?: number;
+            cachedTokens?: number;
+            reasoningTokens?: number;
+          };
+          usageBreakdown?: {
+            main: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+            subAgents: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+            total: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+            llmCallCount?: number;
+          };
+          contextUsage?: {
+            usedPromptTokens?: number;
+            contextWindow?: number;
+            fillPercent?: number;
+          };
+          modelSnapshot?: {
+            id?: string;
+            provider?: string;
+            family?: string;
+            version?: string;
+            contextWindow?: number;
           };
           traceEvents?: unknown[];
           error?: string | undefined;
@@ -427,6 +496,55 @@ export const useChatStore = defineStore('chat', () => {
           promptTokens: t.meta.usage.promptTokens || 0,
           completionTokens: t.meta.usage.completionTokens || 0,
           totalTokens: t.meta.usage.totalTokens || 0,
+          ...(t.meta.usage.cachedTokens !== undefined && {
+            cachedTokens: t.meta.usage.cachedTokens,
+          }),
+          ...(t.meta.usage.reasoningTokens !== undefined && {
+            reasoningTokens: t.meta.usage.reasoningTokens,
+          }),
+        };
+      }
+
+      // Add usage breakdown if present
+      if (t.meta?.usageBreakdown) {
+        const ub = t.meta.usageBreakdown;
+        chatTurn.usageBreakdown = {
+          main: {
+            promptTokens: ub.main?.promptTokens || 0,
+            completionTokens: ub.main?.completionTokens || 0,
+            totalTokens: ub.main?.totalTokens || 0,
+          },
+          subAgents: {
+            promptTokens: ub.subAgents?.promptTokens || 0,
+            completionTokens: ub.subAgents?.completionTokens || 0,
+            totalTokens: ub.subAgents?.totalTokens || 0,
+          },
+          total: {
+            promptTokens: ub.total?.promptTokens || 0,
+            completionTokens: ub.total?.completionTokens || 0,
+            totalTokens: ub.total?.totalTokens || 0,
+          },
+          ...(ub.llmCallCount !== undefined && { llmCallCount: ub.llmCallCount }),
+        };
+      }
+
+      // Add context usage if present
+      if (t.meta?.contextUsage) {
+        chatTurn.contextUsage = {
+          usedPromptTokens: t.meta.contextUsage.usedPromptTokens || 0,
+          contextWindow: t.meta.contextUsage.contextWindow || 0,
+          fillPercent: t.meta.contextUsage.fillPercent || 0,
+        };
+      }
+
+      // Add model snapshot if present
+      if (t.meta?.modelSnapshot) {
+        chatTurn.modelSnapshot = {
+          id: t.meta.modelSnapshot.id || '',
+          provider: t.meta.modelSnapshot.provider || '',
+          family: t.meta.modelSnapshot.family || '',
+          ...(t.meta.modelSnapshot.version && { version: t.meta.modelSnapshot.version }),
+          contextWindow: t.meta.modelSnapshot.contextWindow || 0,
         };
       }
 
@@ -588,6 +706,8 @@ export const useChatStore = defineStore('chat', () => {
     // Computed
     hasCurrentSession,
     currentTurnCount,
+    sessionTokenStats,
+    lastTurnContextUsage,
 
     // Actions
     initialize,

@@ -10,6 +10,13 @@
       @new-chat="handleNewChat"
     />
 
+    <!-- Session Stats (shown when in chat view with stats) -->
+    <SessionStats
+      v-if="viewState.isChatView.value && sessionTokenStats.totalTokens > 0"
+      :stats="sessionTokenStats"
+      :context-usage="lastTurnContextUsage"
+    />
+
     <!-- Warning Banner -->
     <div v-if="!hasProject" class="warning-banner row items-center justify-center">
       <q-icon name="warning" size="16px" class="q-mr-xs" />
@@ -117,6 +124,7 @@ import SetsView from './components/SetsView.vue';
 import HistoryView from './components/HistoryView.vue';
 import ChatMessages from './components/ChatMessages.vue';
 import ChatInput from './components/ChatInput.vue';
+import SessionStats from './components/SessionStats.vue';
 import { useViewState } from './composables/useViewState';
 import { usePromptSets } from './composables/usePromptSets';
 import { useChatInput } from './composables/useChatInput';
@@ -129,6 +137,7 @@ const aiConfig = useAiConfigStore();
 const $q = useQuasar();
 
 const { debugEnabled } = storeToRefs(aiConfig);
+const { sessionTokenStats, lastTurnContextUsage } = storeToRefs(chatStore);
 
 const hasProject = computed(() => projectStore.hasConnectedFolders);
 

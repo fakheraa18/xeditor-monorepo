@@ -15,12 +15,50 @@ from filesystem import list_directory
 
 
 @dataclass
+class TokenStats:
+    """Token usage statistics for the current session."""
+    total_tokens: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    by_family: Dict[str, Dict[str, int]] = None  # {"claude": {"totalTokens": 1000, ...}, ...}
+    
+    def __post_init__(self):
+        if self.by_family is None:
+            self.by_family = {}
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "totalTokens": self.total_tokens,
+            "promptTokens": self.prompt_tokens,
+            "completionTokens": self.completion_tokens,
+            "byFamily": self.by_family,
+        }
+
+
+@dataclass
+class ContextUsage:
+    """Context window usage information."""
+    used_prompt_tokens: int = 0  # Tokens used in the prompt/context
+    context_window: int = 0  # Total context window size
+    fill_percent: float = 0.0  # Percentage of context window used
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "usedPromptTokens": self.used_prompt_tokens,
+            "contextWindow": self.context_window,
+            "fillPercent": round(self.fill_percent, 1),
+        }
+
+
+@dataclass
 class PromptContext:
     """Context available for prompt template injection."""
     system_info: Dict[str, Any]  # OS, shell, workspace, etc.
     available_tools: List[Dict[str, Any]]  # Tool definitions with descriptions
     project_info: Optional[Dict[str, Any]]  # Project metadata
     user_context_summary: Optional[str]  # Summary of user context items
+    token_stats: Optional[TokenStats] = None  # Session token usage statistics
+    context_usage: Optional[ContextUsage] = None  # Current context window usage
 
 
 class ContextBuilder:

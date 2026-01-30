@@ -12,7 +12,7 @@ from typing import AsyncGenerator, Dict, Any, Optional
 import httpx
 
 from .base import LLMProvider
-from .events import LLMEvent, LLMRequest, LLMResponse
+from .events import LLMEvent, LLMRequest, LLMResponse, TokenUsage
 
 # Set up logger for debugging
 logger = logging.getLogger(__name__)
@@ -178,16 +178,10 @@ class OllamaProvider(LLMProvider):
                                 done_reason = data.get("done_reason")
                                 finish_reason = done_reason or "stop"
                                 
-                                # Extract usage statistics
-                                if "prompt_eval_count" in data or "eval_count" in data:
-                                    usage = {
-                                        "prompt_tokens": data.get("prompt_eval_count", 0),
-                                        "completion_tokens": data.get("eval_count", 0),
-                                        "total_tokens": (
-                                            data.get("prompt_eval_count", 0) + 
-                                            data.get("eval_count", 0)
-                                        ),
-                                    }
+                                # Extract and normalize usage using TokenUsage dataclass
+                                token_usage = TokenUsage.from_ollama(data)
+                                if token_usage:
+                                    usage = token_usage.to_dict()
                                 
                                 # Log final statistics
                                 logger.info(f"[Ollama] Stream complete. Content length: {len(full_content)}, "
@@ -364,16 +358,9 @@ class OllamaProvider(LLMProvider):
                 if not thinking and thinking_enabled and isinstance(data, dict) and data.get("thinking"):
                     thinking = str(data.get("thinking") or "")
                 
-                usage = None
-                if "prompt_eval_count" in data or "eval_count" in data:
-                    usage = {
-                        "prompt_tokens": data.get("prompt_eval_count", 0),
-                        "completion_tokens": data.get("eval_count", 0),
-                        "total_tokens": (
-                            data.get("prompt_eval_count", 0) + 
-                            data.get("eval_count", 0)
-                        ),
-                    }
+                # Extract and normalize usage using TokenUsage dataclass
+                token_usage = TokenUsage.from_ollama(data)
+                usage = token_usage.to_dict() if token_usage else None
                 
                 return LLMResponse(
                     content=content,

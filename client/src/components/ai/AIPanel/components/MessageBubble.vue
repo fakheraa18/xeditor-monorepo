@@ -85,7 +85,25 @@
       <!-- Token Usage (for assistant messages) -->
       <div v-if="type === 'assistant' && usage && !isEditing" class="message-meta">
         <q-icon name="token" size="12px" class="q-mr-xs" />
-        {{ usage.totalTokens }} tokens
+        <span>{{ formatTokens(usage.totalTokens) }} tokens</span>
+        <!-- Show breakdown if sub-agents were used -->
+        <q-tooltip v-if="usageBreakdown && usageBreakdown.subAgents.totalTokens > 0" :delay="300">
+          <div class="usage-tooltip">
+            <div>Main: {{ formatTokens(usageBreakdown.main.totalTokens) }}</div>
+            <div>Sub-agents: {{ formatTokens(usageBreakdown.subAgents.totalTokens) }}</div>
+            <div v-if="usageBreakdown.llmCallCount && usageBreakdown.llmCallCount > 1">
+              LLM calls: {{ usageBreakdown.llmCallCount }}
+            </div>
+          </div>
+        </q-tooltip>
+        <!-- Context fill indicator -->
+        <span
+          v-if="contextUsage && contextUsage.contextWindow > 0"
+          class="context-indicator"
+          :class="contextFillClass"
+        >
+          ({{ contextUsage.fillPercent.toFixed(0) }}% ctx)
+        </span>
       </div>
 
       <!-- Artifacts (for assistant messages) -->
@@ -115,20 +133,25 @@ import DiffPreview from './DiffPreview.vue';
 import QuestionResponsePanel from './QuestionResponsePanel.vue';
 import QuestionSkippedPanel from './QuestionSkippedPanel.vue';
 import InlineMessageEditor from './InlineMessageEditor.vue';
-import type { TraceEvent, TraceEventFileChange, Artifact } from '../../../../core/types';
+import type {
+  TraceEvent,
+  TraceEventFileChange,
+  Artifact,
+  TokenUsage,
+  UsageBreakdown,
+  ContextUsage,
+} from '../../../../core/types';
 import type { QuestionResponseData, QuestionSkippedData } from '../types/questions';
 import { QUESTION_RESPONSE_MARKER, QUESTION_SKIPPED_MARKER } from '../types/questions';
 import { COMMAND_APPROVED_MARKER, COMMAND_SKIPPED_MARKER } from '../composables/useChatInput';
-
-interface Usage {
-  totalTokens: number;
-}
 
 const props = defineProps<{
   message: string;
   type: 'user' | 'assistant' | 'system';
   traceEvents?: TraceEvent[] | undefined;
-  usage?: Usage | undefined;
+  usage?: TokenUsage | undefined;
+  usageBreakdown?: UsageBreakdown | undefined;
+  contextUsage?: ContextUsage | undefined;
   error?: string | undefined;
   isStreaming?: boolean | undefined;
   artifacts?: Artifact[] | undefined;
@@ -150,6 +173,22 @@ const fileChangeEvents = computed(() => {
   if (!props.traceEvents) return [];
   return props.traceEvents.filter((e): e is TraceEventFileChange => e.type === 'file_change');
 });
+
+// Context fill styling
+const contextFillClass = computed(() => {
+  if (!props.contextUsage) return '';
+  const percent = props.contextUsage.fillPercent;
+  if (percent >= 90) return 'context-critical';
+  if (percent >= 75) return 'context-warning';
+  return '';
+});
+
+// Format tokens for display
+function formatTokens(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n.toString();
+}
 
 // Detect and parse question response messages
 const questionResponseData = computed((): QuestionResponseData | null => {
@@ -600,6 +639,25 @@ function handleEditSubmit(newText: string) {
   color: #9e9e9e;
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+.context-indicator {
+  margin-left: 4px;
+  color: #888;
+}
+
+.context-warning {
+  color: #f57c00;
+}
+
+.context-critical {
+  color: #d32f2f;
+}
+
+.usage-tooltip {
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* Edit button styling */

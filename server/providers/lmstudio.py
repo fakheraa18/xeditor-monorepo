@@ -12,7 +12,7 @@ from typing import AsyncGenerator, Dict, Any, List
 import httpx
 
 from .base import LLMProvider
-from .events import LLMEvent, LLMRequest
+from .events import LLMEvent, LLMRequest, TokenUsage
 
 
 def extract_reasoning_text(output_item: Dict[str, Any]) -> str:
@@ -159,14 +159,10 @@ class LMStudioProvider(LLMProvider):
                     elif output_type == "message":
                         message_content = extract_content_text(output_item)
                 
-                # Extract usage
+                # Extract and normalize usage using TokenUsage dataclass
                 if "usage" in data:
-                    usage_data = data["usage"]
-                    usage = {
-                        "prompt_tokens": usage_data.get("input_tokens", 0),
-                        "completion_tokens": usage_data.get("output_tokens", 0),
-                        "total_tokens": usage_data.get("total_tokens", 0),
-                    }
+                    token_usage = TokenUsage.from_lmstudio(data["usage"])
+                    usage = token_usage.to_dict() if token_usage else None
                 
                 # Emit thinking events first (if reasoning present)
                 # This is the key difference from the old approach:
@@ -293,11 +289,9 @@ class LMStudioProvider(LLMProvider):
                                         finish_reason = data["choices"][0]["finish_reason"]
                                 
                                 if "usage" in data:
-                                    usage = {
-                                        "prompt_tokens": data["usage"].get("prompt_tokens", 0),
-                                        "completion_tokens": data["usage"].get("completion_tokens", 0),
-                                        "total_tokens": data["usage"].get("total_tokens", 0),
-                                    }
+                                    # Auto-detect format (could be OpenAI or LMStudio style)
+                                    token_usage = TokenUsage.from_auto(data["usage"])
+                                    usage = token_usage.to_dict() if token_usage else None
                             except json.JSONDecodeError:
                                 pass
                     

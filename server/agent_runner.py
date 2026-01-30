@@ -377,6 +377,47 @@ class AgentRunner:
             user_context=user_context,
         )
 
+        # Compute token stats from chat history for prompt template variables
+        session_token_stats = {
+            "totalTokens": 0,
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "byFamily": {},
+        }
+        last_context_usage = {
+            "usedPromptTokens": 0,
+            "contextWindow": model_config.get("contextWindow", 0),
+            "fillPercent": 0.0,
+        }
+        
+        # Aggregate token stats from all previous turns in the chat
+        for turn in chat.get("turns", []):
+            turn_meta = turn.get("meta", {})
+            turn_usage = turn_meta.get("usage", {})
+            if turn_usage:
+                session_token_stats["totalTokens"] += turn_usage.get("totalTokens", 0)
+                session_token_stats["promptTokens"] += turn_usage.get("promptTokens", 0)
+                session_token_stats["completionTokens"] += turn_usage.get("completionTokens", 0)
+            
+            # Track per-family usage
+            model_snapshot = turn_meta.get("modelSnapshot", {})
+            family = model_snapshot.get("family") or turn.get("modelId", "").split("-")[0]
+            if family and turn_usage:
+                if family not in session_token_stats["byFamily"]:
+                    session_token_stats["byFamily"][family] = {
+                        "totalTokens": 0,
+                        "promptTokens": 0,
+                        "completionTokens": 0,
+                    }
+                session_token_stats["byFamily"][family]["totalTokens"] += turn_usage.get("totalTokens", 0)
+                session_token_stats["byFamily"][family]["promptTokens"] += turn_usage.get("promptTokens", 0)
+                session_token_stats["byFamily"][family]["completionTokens"] += turn_usage.get("completionTokens", 0)
+            
+            # Update last context usage from the most recent turn
+            context_usage = turn_meta.get("contextUsage", {})
+            if context_usage:
+                last_context_usage = context_usage
+
         # Resolve prompt with context
         prompt_response = await handle_resolve_prompt({
             "mode": mode,
@@ -388,6 +429,8 @@ class AgentRunner:
                 "available_tools": prompt_context.available_tools,
                 "project_info": prompt_context.project_info,
                 "user_context_summary": prompt_context.user_context_summary,
+                "token_stats": session_token_stats,
+                "context_usage": last_context_usage,
             },
         })
         
@@ -431,6 +474,13 @@ class AgentRunner:
         all_patches: List[Dict[str, Any]] = []  # Accumulate patches from all steps
         usage = None
         error_message: Optional[str] = None
+        
+        # Initialize usage aggregation variables for tracking across multiple LLM calls
+        turn_usage_total: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        turn_usage_peak_prompt_tokens = 0  # Track peak prompt tokens for context fill calculation
+        turn_llm_call_count = 0
+        sub_agent_usage_total: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        tool_call_detected = False  # Flag to track if we detected a tool call but need to wait for "end" event
         
         current_step = 0
         last_parsed: Optional[ParsedResponse] = None
@@ -658,6 +708,7 @@ class AgentRunner:
                 # Get provider and stream
                 provider = get_provider(provider_config)
                 received_thinking_from_provider = False
+                tool_call_detected = False  # Reset flag for this LLM call
                 
                 async for event in provider.stream(llm_request):
                     if event.type == "thinking":
@@ -780,7 +831,7 @@ class AgentRunner:
                                 if new_thinking:
                                     await emit_event("thinking_chunk", {"content": new_thinking})
                         
-                        # Check if tool call was detected - if so, clean content and break
+                        # Check if tool call was detected - if so, mark it but continue to receive "end" event for usage
                         if parsed.tool_call:
                             # Close thinking block if it was opened
                             if thinking_started:
@@ -791,8 +842,10 @@ class AgentRunner:
                             # This ensures LLM sees its tool call markers in context
                             final_text = parsed.final_text
                             last_parsed = parsed
-                            # Break from content streaming loop - tool execution happens after this
-                            break
+                            tool_call_detected = True  # Mark that we detected a tool call
+                            
+                            # Don't break yet - continue to receive "end" event for usage accumulation
+                            # We'll break after receiving "end" event if tool_call_detected is True
                         
                         last_parsed = parsed
                     
@@ -863,6 +916,18 @@ class AgentRunner:
                     
                     elif event.type == "end":
                         usage = event.usage
+                        
+                        # Accumulate usage across all LLM calls in this turn
+                        if usage:
+                            turn_llm_call_count += 1
+                            turn_usage_total["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                            turn_usage_total["completion_tokens"] += usage.get("completion_tokens", 0)
+                            turn_usage_total["total_tokens"] += usage.get("total_tokens", 0)
+                            
+                            # Track peak prompt tokens for context fill calculation
+                            prompt_tokens = usage.get("prompt_tokens", 0)
+                            if prompt_tokens > turn_usage_peak_prompt_tokens:
+                                turn_usage_peak_prompt_tokens = prompt_tokens
 
                         # Final parse
                         if accumulated_content:
@@ -959,6 +1024,10 @@ class AgentRunner:
                                     },
                                 })
                         
+                        # If we detected a tool call earlier, break now after accumulating usage
+                        if tool_call_detected:
+                            break
+                        
                         break
                     
                     elif event.type == "error":
@@ -976,30 +1045,35 @@ class AgentRunner:
 
             # Check for tool call
             if last_parsed and last_parsed.tool_call:
-                tool_call = last_parsed.tool_call
-                tool_name = tool_call.get("tool", "")
-                tool_args = tool_call.get("args", {})
-                
-                # Reset assistant message ID when tool starts - next text will be a new segment
-                current_assistant_message_id = None
-                
-                # Emit tool start event
-                tool_call_id = str(uuid.uuid4())
-                tool_start_timestamp = int(datetime.now().timestamp() * 1000)
-                # Add tool_call trace event with proper timestamp
-                trace_events.append({
-                    "type": "tool_call",
-                    "id": tool_call_id,
-                    "timestamp": tool_start_timestamp,
-                    "toolName": tool_name,
-                    "arguments": tool_args,
-                    "output": "",  # Initialize output for streaming
-                })
-                await emit_event("tool_start", {
-                    "tool": tool_name,
-                    "args": tool_args,
-                    "id": tool_call_id,
-                })
+                try:
+                    tool_call = last_parsed.tool_call
+                    tool_name = tool_call.get("tool", "")
+                    tool_args = tool_call.get("args", {})
+                    
+                    # Reset assistant message ID when tool starts - next text will be a new segment
+                    current_assistant_message_id = None
+                    
+                    # Emit tool start event
+                    tool_call_id = str(uuid.uuid4())
+                    tool_start_timestamp = int(datetime.now().timestamp() * 1000)
+                    # Add tool_call trace event with proper timestamp
+                    trace_events.append({
+                        "type": "tool_call",
+                        "id": tool_call_id,
+                        "timestamp": tool_start_timestamp,
+                        "toolName": tool_name,
+                        "arguments": tool_args,
+                        "output": "",  # Initialize output for streaming
+                    })
+                    await emit_event("tool_start", {
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "id": tool_call_id,
+                    })
+                except Exception as tool_error:
+                    error_message = f"Error processing tool call: {str(tool_error)}"
+                    await emit_event("error", {"message": error_message})
+                    break
                 
                 # Get project root for tool execution
                 project_manager = get_project_manager()
@@ -1190,6 +1264,16 @@ class AgentRunner:
                 # Merge sub-agent trace events into parent trace_events so they persist after reload
                 if merged_subagent_trace_events:
                     trace_events.extend(merged_subagent_trace_events)
+                    
+                    # Extract sub-agent usage from sub_agent_end events and accumulate
+                    # Note: sub_agent_end event has usage in camelCase format
+                    for event in merged_subagent_trace_events:
+                        if event.get("type") == "sub_agent_end" and event.get("usage"):
+                            sub_usage = event.get("usage", {})
+                            # Convert camelCase to snake_case for accumulation
+                            sub_agent_usage_total["prompt_tokens"] += sub_usage.get("promptTokens", sub_usage.get("prompt_tokens", 0))
+                            sub_agent_usage_total["completion_tokens"] += sub_usage.get("completionTokens", sub_usage.get("completion_tokens", 0))
+                            sub_agent_usage_total["total_tokens"] += sub_usage.get("totalTokens", sub_usage.get("total_tokens", 0))
                 
                 # Update tool_call trace event output with final result/error
                 for te in trace_events:
@@ -1324,11 +1408,79 @@ class AgentRunner:
         # If there's an error, don't include in context and store error in meta
         has_error = error_message is not None
         
+        # Build usage breakdown: main agent vs sub-agents
+        # Convert to camelCase for client compatibility
+        main_usage = {
+            "promptTokens": turn_usage_total["prompt_tokens"],
+            "completionTokens": turn_usage_total["completion_tokens"],
+            "totalTokens": turn_usage_total["total_tokens"],
+        }
+        sub_agents_usage = {
+            "promptTokens": sub_agent_usage_total["prompt_tokens"],
+            "completionTokens": sub_agent_usage_total["completion_tokens"],
+            "totalTokens": sub_agent_usage_total["total_tokens"],
+        }
+        total_usage = {
+            "promptTokens": main_usage["promptTokens"] + sub_agents_usage["promptTokens"],
+            "completionTokens": main_usage["completionTokens"] + sub_agents_usage["completionTokens"],
+            "totalTokens": main_usage["totalTokens"] + sub_agents_usage["totalTokens"],
+        }
+        
+        usage_breakdown = {
+            "main": main_usage,
+            "subAgents": sub_agents_usage,
+            "total": total_usage,
+            "llmCallCount": turn_llm_call_count if turn_llm_call_count > 0 else None,
+        }
+        
+        # Build context usage info (based on peak prompt tokens)
+        context_window = model_config.get("contextWindow", 0)
+        context_usage = None
+            # Show context usage if we have peak prompt tokens
+        if turn_usage_peak_prompt_tokens > 0:
+            if context_window > 0:
+                # Model has a known context window - calculate percentage
+                fill_percent = (turn_usage_peak_prompt_tokens / context_window) * 100.0
+                context_usage = {
+                    "usedPromptTokens": turn_usage_peak_prompt_tokens,
+                    "contextWindow": context_window,
+                    "fillPercent": fill_percent,
+                }
+            else:
+                # Model context window unknown - show used tokens only (no percentage)
+                context_usage = {
+                    "usedPromptTokens": turn_usage_peak_prompt_tokens,
+                    "contextWindow": 0,  # 0 indicates unknown/not set
+                    "fillPercent": 0.0,  # 0 indicates no percentage available
+                }
+        
+        # Build model snapshot for stable per-family tracking
+        model_snapshot = {
+            "id": model_config.get("id", ""),
+            "provider": model_config.get("provider", ""),
+            "family": model_config.get("family", ""),
+            "version": model_config.get("version"),
+            "contextWindow": context_window,
+        }
+        
+        # Convert last usage to camelCase if present (for backward compatibility)
+        usage_camel_case = None
+        if usage:
+            usage_camel_case = {
+                "promptTokens": usage.get("prompt_tokens", 0),
+                "completionTokens": usage.get("completion_tokens", 0),
+                "totalTokens": usage.get("total_tokens", 0),
+            }
+        
         # Build meta dict
+        # Use total_usage for backward compatibility with existing "usage" field
         meta: Dict[str, Any] = {
             "thinking": thinking_content,
             "systemPrompt": system_prompt,
-            "usage": usage,
+            "usage": total_usage if total_usage["totalTokens"] > 0 else usage_camel_case,  # Backward compat: use aggregated total or last usage (camelCase)
+            "usageBreakdown": usage_breakdown,
+            "contextUsage": context_usage,
+            "modelSnapshot": model_snapshot,
             "traceEvents": trace_events,
             "error": error_message,
         }
@@ -1407,6 +1559,8 @@ class AgentRunner:
                 "agentStartId": sub_agent_id,
                 "result": clean_assistant_message if not has_error else None,
                 "error": error_message,
+                "usage": main_usage if main_usage["totalTokens"] > 0 else None,  # Sub-agent's own usage (not including nested sub-agents) - camelCase
+                "modelSnapshot": model_snapshot,
             }
             trace_events.append(sub_agent_end_event)
             await on_event("sub_agent_end", sub_agent_end_event)

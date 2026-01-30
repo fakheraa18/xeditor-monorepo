@@ -543,12 +543,36 @@ async def handle_resolve_prompt(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Convert context dict to PromptContext if provided
     prompt_context = None
     if context:
-        from prompts.context_builder import PromptContext
+        from prompts.context_builder import PromptContext, TokenStats, ContextUsage
+        
+        # Build TokenStats if provided
+        token_stats = None
+        token_stats_dict = context.get("token_stats")
+        if token_stats_dict:
+            token_stats = TokenStats(
+                total_tokens=token_stats_dict.get("totalTokens", 0),
+                prompt_tokens=token_stats_dict.get("promptTokens", 0),
+                completion_tokens=token_stats_dict.get("completionTokens", 0),
+                by_family=token_stats_dict.get("byFamily", {}),
+            )
+        
+        # Build ContextUsage if provided
+        context_usage = None
+        context_usage_dict = context.get("context_usage")
+        if context_usage_dict:
+            context_usage = ContextUsage(
+                used_prompt_tokens=context_usage_dict.get("usedPromptTokens", 0),
+                context_window=context_usage_dict.get("contextWindow", 0),
+                fill_percent=context_usage_dict.get("fillPercent", 0.0),
+            )
+        
         prompt_context = PromptContext(
             system_info=context.get("system_info", {}),
             available_tools=context.get("available_tools", []),
             project_info=context.get("project_info"),
             user_context_summary=context.get("user_context_summary"),
+            token_stats=token_stats,
+            context_usage=context_usage,
         )
     
     template = manager.resolve_prompt(mode, model_family, model_version, set_id, prompt_context)

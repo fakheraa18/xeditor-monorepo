@@ -6,7 +6,7 @@ through the Provider Adapter pattern. Each provider normalizes its responses int
 LLMEvents that the rest of the system can consume uniformly.
 """
 
-from .events import LLMEvent, LLMResponse, LLMRequest
+from .events import LLMEvent, LLMResponse, LLMRequest, TokenUsage
 from .base import LLMProvider
 from .factory import get_provider, get_provider_for_request
 
@@ -24,6 +24,7 @@ __all__ = [
     "LLMEvent",
     "LLMResponse",
     "LLMRequest",
+    "TokenUsage",
     # Base
     "LLMProvider",
     # Factory

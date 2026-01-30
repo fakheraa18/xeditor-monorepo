@@ -123,6 +123,15 @@
         <span class="result-preview">{{ truncateResult(endEvent.result) }}</span>
       </div>
 
+      <!-- Sub-Agent Token Usage -->
+      <div v-if="endEvent?.usage" class="sub-agent-usage">
+        <q-icon name="token" size="12px" class="q-mr-xs" />
+        <span>{{ formatTokens(endEvent.usage.totalTokens) }} tokens</span>
+        <span v-if="endEvent.modelSnapshot?.family" class="usage-family">
+          ({{ endEvent.modelSnapshot.family }})
+        </span>
+      </div>
+
       <!-- Sub-Agent Error -->
       <div v-if="endEvent && endEvent.error" class="sub-agent-error-message">
         <q-icon name="error" size="14px" color="negative" class="q-mr-xs" />
@@ -281,6 +290,12 @@ function truncateResult(result: unknown): string {
   const str = typeof result === 'string' ? result : JSON.stringify(result);
   const MAX_LENGTH = 150;
   return str.length > MAX_LENGTH ? str.slice(0, MAX_LENGTH) + '...' : str;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n.toString();
 }
 </script>
 
@@ -506,6 +521,20 @@ function truncateResult(result: unknown): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sub-agent-usage {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.usage-family {
+  color: #999;
 }
 
 .sub-agent-error-message {

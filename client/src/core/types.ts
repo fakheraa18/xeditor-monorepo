@@ -435,6 +435,37 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  // Optional detailed breakdown (provider-specific)
+  cachedTokens?: number;
+  reasoningTokens?: number;
+}
+
+export interface UsageBreakdown {
+  main: TokenUsage;
+  subAgents: TokenUsage;
+  total: TokenUsage;
+  llmCallCount?: number;
+}
+
+export interface ContextUsage {
+  usedPromptTokens: number;
+  contextWindow: number;
+  fillPercent: number;
+}
+
+export interface ModelSnapshot {
+  id: string;
+  provider: string;
+  family: string;
+  version?: string;
+  contextWindow: number;
+}
+
+export interface SessionTokenStats {
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  byFamily: Record<string, TokenUsage>;
 }
 
 export interface TraceEventToolCall {
@@ -502,6 +533,9 @@ export interface TraceEventSubAgentEnd {
   agentStartId: TraceEventId;
   result?: unknown;
   error?: string | undefined;
+  // Token usage from sub-agent (for aggregation in parent)
+  usage?: TokenUsage;
+  modelSnapshot?: ModelSnapshot;
 }
 
 export interface TraceEventFileChange {
@@ -583,6 +617,11 @@ export interface ChatTurn {
   contextMessages?: ChatMessage[]; // The clean, optimized transcript sent to the LLM
   workingSet?: string[]; // List of file paths the agent has explicitly "read" and is keeping in focus
   artifacts?: Artifact[]; // Artifacts (plans, files) created by tools in this turn
+
+  // Token usage breakdown and context tracking
+  usageBreakdown?: UsageBreakdown; // Detailed breakdown: main vs sub-agents
+  contextUsage?: ContextUsage; // Context window usage info
+  modelSnapshot?: ModelSnapshot; // Snapshot of model used for stable per-family tracking
 }
 
 export interface ChatSession {

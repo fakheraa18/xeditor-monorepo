@@ -41,6 +41,8 @@
             type="assistant"
             :trace-events="turn.traceEvents ?? undefined"
             :usage="turn.usage ?? undefined"
+            :usage-breakdown="turn.usageBreakdown ?? undefined"
+            :context-usage="turn.contextUsage ?? undefined"
             :artifacts="turn.artifacts ?? undefined"
             :debug-enabled="debugEnabled"
             @debug-inspect-tool-call="$emit('debug-inspect-tool-call', $event)"

@@ -10,7 +10,7 @@ from typing import AsyncGenerator, Dict, Any
 import httpx
 
 from .base import LLMProvider
-from .events import LLMEvent, LLMRequest
+from .events import LLMEvent, LLMRequest, TokenUsage
 
 
 class GenericHTTPProvider(LLMProvider):
@@ -155,11 +155,9 @@ class GenericHTTPProvider(LLMProvider):
                                         finish_reason = data["choices"][0]["finish_reason"]
                                 
                                 if "usage" in data:
-                                    usage = {
-                                        "prompt_tokens": data["usage"].get("prompt_tokens", 0),
-                                        "completion_tokens": data["usage"].get("completion_tokens", 0),
-                                        "total_tokens": data["usage"].get("total_tokens", 0),
-                                    }
+                                    # Auto-detect format and normalize using TokenUsage dataclass
+                                    token_usage = TokenUsage.from_auto(data["usage"])
+                                    usage = token_usage.to_dict() if token_usage else None
                             except json.JSONDecodeError:
                                 pass
                     
