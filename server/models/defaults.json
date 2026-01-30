@@ -77,10 +77,17 @@
     },
     "connection": {
       "baseUrl": "https://generativelanguage.googleapis.com",
-      "path": "/v1beta/models/gemini-3-pro:generateContent",
+      "path": "/v1beta/models/gemini-3-pro-preview:generateContent",
       "auth": {
         "type": "header",
         "headerName": "x-goog-api-key"
+      }
+    },
+    "extraPayload": {
+      "generationConfig": {
+        "thinkingConfig": {
+          "thinkingLevel": "high"
+        }
       }
     }
   },
@@ -103,6 +110,13 @@
       "auth": {
         "type": "header",
         "headerName": "x-goog-api-key"
+      }
+    },
+    "extraPayload": {
+      "generationConfig": {
+        "thinkingConfig": {
+          "thinkingLevel": "high"
+        }
       }
     }
   },

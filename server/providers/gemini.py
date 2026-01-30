@@ -107,6 +107,17 @@ class GeminiProvider(LLMProvider):
         if request.max_tokens:
             generation_config["maxOutputTokens"] = request.max_tokens
         
+        # Check provider_params for thinking configuration (from UI)
+        thinking_params = request.provider_params.get("thinking", {})
+        if thinking_params.get("enabled", False):
+            thinking_level = thinking_params.get("thinkingLevel", "low")
+            # Convert to Gemini API format: generationConfig.thinkingConfig.thinkingLevel
+            # IMPORTANT: includeThoughts must be true to get thinking summaries in response
+            if "thinkingConfig" not in generation_config:
+                generation_config["thinkingConfig"] = {}
+            generation_config["thinkingConfig"]["thinkingLevel"] = thinking_level
+            generation_config["thinkingConfig"]["includeThoughts"] = True
+        
         # Process extra_payload: validate thinking config and merge generationConfig
         if request.extra_payload:
             # Check for invalid top-level thinking fields
@@ -121,7 +132,7 @@ class GeminiProvider(LLMProvider):
                         "For Gemini-3 models, thinking must be configured as: "
                         'extraPayload: { "generationConfig": { "thinkingConfig": { "thinkingLevel": "low" } } }. '
                         "Accepted values for gemini-3-flash-preview: minimal, low, medium, high. "
-                        "Accepted values for gemini-3-pro: low, high."
+                        "Accepted values for gemini-3-pro-preview: low, high."
                     )
                 )
                 return
@@ -131,6 +142,23 @@ class GeminiProvider(LLMProvider):
                 extra_gen_config = request.extra_payload["generationConfig"]
                 if isinstance(extra_gen_config, dict):
                     # Deep merge: extra_payload values override defaults
+                    # Preserve thinkingConfig if already set from provider_params
+                    if "thinkingConfig" in generation_config and "thinkingConfig" in extra_gen_config:
+                        # Merge thinkingConfig deeply - preserve includeThoughts if thinkingLevel is set
+                        extra_thinking_config = extra_gen_config["thinkingConfig"]
+                        if "thinkingLevel" in extra_thinking_config and "includeThoughts" not in extra_thinking_config:
+                            # If thinkingLevel is set but includeThoughts isn't, ensure it's true
+                            extra_thinking_config["includeThoughts"] = True
+                        generation_config["thinkingConfig"].update(extra_thinking_config)
+                        # Remove thinkingConfig from extra_gen_config before update to avoid overwrite
+                        extra_gen_config = {k: v for k, v in extra_gen_config.items() if k != "thinkingConfig"}
+                    elif "thinkingConfig" in extra_gen_config:
+                        # thinkingConfig only in extra_payload, ensure includeThoughts is set
+                        extra_thinking_config = extra_gen_config["thinkingConfig"]
+                        if isinstance(extra_thinking_config, dict):
+                            if "thinkingLevel" in extra_thinking_config and "includeThoughts" not in extra_thinking_config:
+                                # If thinkingLevel is set but includeThoughts isn't, ensure it's true
+                                extra_thinking_config["includeThoughts"] = True
                     generation_config.update(extra_gen_config)
             
             # Merge remaining top-level fields (safetySettings, tools, etc.)
@@ -248,11 +276,22 @@ class GeminiProvider(LLMProvider):
                                     
                                     if "content" in candidate and "parts" in candidate["content"]:
                                         parts = candidate["content"]["parts"]
+                                        
                                         for part in parts:
+                                            # Check for thinking/reasoning parts (Gemini thinking models)
+                                            # According to Gemini API docs, thinking parts have thought: true field
+                                            if part.get("thought") is True:
+                                                # This is a thinking part, emit as thinking event
+                                                thinking_chunk = part.get("text", "")
+                                                if thinking_chunk:
+                                                    yield LLMEvent(type="thinking", content=thinking_chunk)
+                                                continue
+                                            
                                             if "text" in part:
                                                 chunk = part["text"]
-                                                full_content += chunk
-                                                yield LLMEvent(type="content", content=chunk)
+                                                if chunk:  # Only emit non-empty chunks
+                                                    full_content += chunk
+                                                    yield LLMEvent(type="content", content=chunk)
                                     
                                     if "finishReason" in candidate:
                                         fr = candidate["finishReason"].lower()
