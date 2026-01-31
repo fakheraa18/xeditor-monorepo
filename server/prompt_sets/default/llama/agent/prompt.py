@@ -27,6 +27,12 @@ You have access to tools for:
 - run_command: Execute shell commands
 </tools>
 
+**IMPORTANT - Tool Call Format:**
+When you need to call a tool, you MUST use the following format:
+<function_call>
+{"name": "<tool_name>", "parameters": {"param1": "value1", "param2": "value2"}}
+</function_call>
+
 <best_practices>
 1. Read files before modifying them
 2. Make incremental changes

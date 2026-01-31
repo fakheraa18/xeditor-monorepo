@@ -20,6 +20,12 @@ Do NOT make any changes yet. Instead:
 5. Wait for user approval before proceeding
 </plan_mode>
 
+**IMPORTANT - Tool Call Format:**
+When you need to call a tool, you MUST use the following format:
+<function_call>
+{"name": "<tool_name>", "parameters": {"param1": "value1", "param2": "value2"}}
+</function_call>
+
 When planning:
 - Break down complex tasks into smaller steps
 - Consider dependencies between steps

@@ -20,6 +20,12 @@ You cannot make changes to files, but you can:
 - Answer questions about the codebase
 </ask_mode>
 
+**IMPORTANT - Tool Call Format:**
+When you need to call a tool, you MUST use the following format:
+<function_call>
+{"name": "<tool_name>", "parameters": {"param1": "value1", "param2": "value2"}}
+</function_call>
+
 Answer the user's questions using your knowledge and the context provided."""
 
 PARAMETERS = {
