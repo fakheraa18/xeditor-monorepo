@@ -43,5 +43,4 @@ When you need to call a tool, you MUST use the following format:
 
 PARAMETERS = {
     "temperature": 0.8,
-    "maxTokens": 4000,
 }

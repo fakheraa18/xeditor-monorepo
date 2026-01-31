@@ -131,5 +131,4 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
 
 PARAMETERS = {
     "temperature": 0.5,
-    "maxTokens": 4000,
 }

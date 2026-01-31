@@ -66,5 +66,4 @@ You may use <think> tags for internal reasoning, but do not expose confidential 
 
 PARAMETERS = {
     "temperature": 0.8,
-    "maxTokens": 4000,
 }

@@ -174,5 +174,4 @@ Remember: NO EDITS, NO MODIFICATIONS - only reading and planning."""
 
 PARAMETERS = {
     "temperature": 0.7,
-    "maxTokens": 4000,
 }

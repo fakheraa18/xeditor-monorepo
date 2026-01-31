@@ -28,5 +28,4 @@ When planning:
 
 PARAMETERS = {
     "temperature": 0.7,
-    "maxTokens": 4000,
 }
