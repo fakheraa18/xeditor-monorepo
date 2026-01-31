@@ -26,6 +26,7 @@ prompt_sets/
 ```
 
 **Community/User Prompt Sets** are stored in:
+
 ```
 ~/.xeditor/llm/
 ├── {username}/
@@ -116,6 +117,7 @@ PARAMETERS = {
 ```
 
 Only tools listed in this file will be:
+
 - Injected into the `{{tools}}` variable in your prompt
 - Allowed to execute when the LLM calls them
 
@@ -138,6 +140,7 @@ You can use template variables in your prompts that will be automatically replac
 - `{{tools}}` - Complete formatted tool definitions section with descriptions and parameters
 
 This will be replaced with detailed markdown documentation of all **allowed** tools (from tools.json), including:
+
 - Tool names and descriptions
 - Parameter documentation
 
@@ -166,7 +169,7 @@ from parsers.base import ResponseParser, ParsedResponse
 
 class CustomParser(ResponseParser):
     family = "my_family"
-    
+
     def parse(self, content: str) -> ParsedResponse:
         # Parse the LLM response
         # Extract thinking, tool calls, final text, etc.
@@ -175,7 +178,7 @@ class CustomParser(ResponseParser):
             tool_call=None,
             final_text=content,
         )
-    
+
     def strip_tags(self, content: str) -> str:
         return content.strip()
 
@@ -184,7 +187,38 @@ parser = CustomParser()
 
 **Note**: Parsers are shared across all modes (ask, plan, agent) for a given family. If you need version-specific parsing behavior, you can create `{family}/{version}/parser.py` instead of `{family}/parser.py`.
 
-### 6. Custom Tools
+### 6. Tool Call Formats & Alignment
+
+**CRITICAL**: Your system prompts must instruct the model to use a tool call format that your parser understands.
+
+Different model families work best with different formats. Ensure your `SYSTEM_PROMPT` in `prompt.py` explicitly tells the model which format to use:
+
+- **Qwen/GPT**: JSON-based
+
+  ```xml
+  <tool_call>
+  {"name": "tool_name", "arguments": {...}}
+  </tool_call>
+  ```
+
+- **Claude**: XML-based
+
+  ```xml
+  <tool_code>
+  {"tool": "tool_name", "args": {...}}
+  </tool_code>
+  ```
+
+- **Llama**: Function call tag
+  ```xml
+  <function_call>
+  {"name": "tool_name", "parameters": {...}}
+  </function_call>
+  ```
+
+Your `parser.py` must implement `serialize_tool_call` to match these formats so the model sees consistent history.
+
+### 7. Custom Tools
 
 You can add custom tools specific to your prompt set. Custom tools **must** include a `TOOL_DESCRIPTOR` for the LLM to understand them.
 
@@ -221,24 +255,24 @@ async def my_tool(
 ) -> Dict[str, Any]:
     """
     Tool implementation.
-    
+
     Args:
         args: Tool arguments from LLM (matches TOOL_DESCRIPTOR parameters)
         context: Framework context
-    
+
     Returns:
         Dict with 'success', 'result', and optional 'error'
     """
     input_value = args.get("input", "")
     output_format = args.get("format", "text")
-    
+
     try:
         # Your tool logic here
         result = f"Processed: {input_value}"
-        
+
         # Stream output to UI (optional)
         await context.emit_tool_chunk(f"Processing {input_value}...")
-        
+
         return {
             "success": True,
             "result": {"output": result, "format": output_format},
@@ -267,19 +301,19 @@ Custom tools receive a `ToolContext` with these methods:
 
 These tools are provided by XEditor. Include them in your `tools.json` to make them available:
 
-| Tool | Description |
-|------|-------------|
-| `read_file` | Read file contents with optional line range |
-| `write_file` | Write/create files |
-| `search_code` | Search codebase using ripgrep |
-| `list_dir` | List directory contents |
-| `run_command` | Execute shell commands |
-| `create_file` | Create new files |
-| `delete_file` | Delete files |
-| `file_exists` | Check file/directory existence |
-| `search_replace` | Find and replace text in files |
-| `todo_write` | Manage task lists |
-| `semantic_search` | Vector-based code search |
+| Tool              | Description                                 |
+| ----------------- | ------------------------------------------- |
+| `read_file`       | Read file contents with optional line range |
+| `write_file`      | Write/create files                          |
+| `search_code`     | Search codebase using ripgrep               |
+| `list_dir`        | List directory contents                     |
+| `run_command`     | Execute shell commands                      |
+| `create_file`     | Create new files                            |
+| `delete_file`     | Delete files                                |
+| `file_exists`     | Check file/directory existence              |
+| `search_replace`  | Find and replace text in files              |
+| `todo_write`      | Manage task lists                           |
+| `semantic_search` | Vector-based code search                    |
 
 ## Example: Complete Prompt Set
 
