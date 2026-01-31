@@ -438,6 +438,31 @@ class HarmonyParser(ResponseParser):
         # Only remove thinking tags (internal, shouldn't be displayed)
         result = self.THINK_PATTERN.sub('', content)
         return result
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """
+        Serialize a tool call into Harmony format for chat context.
+        
+        Format:
+        <|channel|>commentary to={tool_name} <|constrain|>json<|message|>{args_json}
+        Tool Result: {result}
+        """
+        args_json = json.dumps(args)
+        tool_call_str = f"<|channel|>commentary to={tool_name} <|constrain|>json<|message|>{args_json}"
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 parser = HarmonyParser()

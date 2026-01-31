@@ -172,6 +172,39 @@ class ResponseParser(ABC):
         """
         # Default: all content is safe to stream, no tool pending
         return content, False
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """
+        Serialize a tool call into the family's native format for chat context.
+        
+        This is used when building LLM context from chat history to ensure
+        tool calls are formatted in a way the model recognizes from training.
+        
+        Args:
+            tool_name: Name of the tool that was called
+            args: Arguments passed to the tool
+            result: Result from the tool execution (if successful)
+            error: Error message (if tool failed)
+            
+        Returns:
+            Formatted string representing the tool call and its result
+        """
+        # Default format using <tool_code> tags (generic fallback)
+        tool_call_str = f'<tool_code>{{"tool": "{tool_name}", "args": {json.dumps(args)}}}</tool_code>'
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 class DefaultParser(ResponseParser):
@@ -240,6 +273,24 @@ class DefaultParser(ResponseParser):
         result = self.THOUGHT_PATTERN.sub('', result)
         result = self.TOOL_CODE_PATTERN.sub('', result)
         return result.strip()
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """Serialize tool call using <tool_code> format."""
+        tool_call_str = f'<tool_code>{{"tool": "{tool_name}", "args": {json.dumps(args)}}}</tool_code>'
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 class ClaudeParser(ResponseParser):
@@ -298,6 +349,24 @@ class ClaudeParser(ResponseParser):
         result = re.sub(r'<artifact[^>]*>', '', result)
         result = re.sub(r'</artifact>', '', result)
         return result.strip()
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """Serialize tool call using <tool_code> format for Claude."""
+        tool_call_str = f'<tool_code>{{"tool": "{tool_name}", "args": {json.dumps(args)}}}</tool_code>'
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 class GPTParser(ResponseParser):
@@ -360,6 +429,26 @@ class GPTParser(ResponseParser):
         result = self.THINK_PATTERN.sub('', result)
         result = self.TOOL_CODE_PATTERN.sub('', result)
         return result.strip()
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """Serialize tool call using <tool_code> format for GPT base parser."""
+        # Note: The prompt_sets/default/gpt/parser.py uses Harmony format
+        # This base parser uses a simpler format
+        tool_call_str = f'<tool_code>{{"tool": "{tool_name}", "args": {json.dumps(args)}}}</tool_code>'
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 class LlamaParser(ResponseParser):
@@ -421,6 +510,24 @@ class LlamaParser(ResponseParser):
         result = self.TOOL_CODE_PATTERN.sub('', result)
         result = self.FUNCTION_CALL_PATTERN.sub('', result)
         return result.strip()
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """Serialize tool call using <function_call> format for Llama."""
+        tool_call_str = f'<function_call>{{"name": "{tool_name}", "parameters": {json.dumps(args)}}}</function_call>'
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 # Parser registry

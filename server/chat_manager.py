@@ -6,9 +6,12 @@ Handles chat storage at ~/.xeditor/projects/{projectName}/chats/{chatId}.json
 import json
 import uuid
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from datetime import datetime
 from project import get_project_manager
+
+if TYPE_CHECKING:
+    from parsers.base import ResponseParser
 
 
 def get_chats_directory(project_id: str) -> Path:
@@ -150,12 +153,38 @@ class ChatManager:
         new_message: str,
         user_context: List[Dict[str, Any]],
         system_prompt: str,
+        family: str = "default",
+        set_id: str = "default",
+        version: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """
         Build LLM context from chat history, filtering out meta-only content.
         
-        Returns list of messages in OpenAI format: [{"role": "...", "content": "..."}]
+        Tool calls from history are serialized using the current family's format,
+        ensuring the LLM sees tool calls in a format it recognizes from training.
+        This prevents the LLM from learning incorrect tool calling patterns from
+        mixed-format history when users switch between model families.
+        
+        Args:
+            chat: Chat data with turns
+            new_message: New user message to add
+            user_context: Context items to include with the message
+            system_prompt: System prompt for the LLM
+            family: Current model family (e.g., "gpt", "claude", "kimi")
+            set_id: Prompt set ID (e.g., "default")
+            version: Optional model version
+        
+        Returns:
+            List of messages in OpenAI format: [{"role": "...", "content": "..."}]
         """
+        # Get parser for current family to serialize tool calls in the correct format
+        parser: Optional["ResponseParser"] = None
+        try:
+            from parsers.base import get_parser_for_request
+            parser = get_parser_for_request(set_id, family, version, "agent")
+        except Exception as e:
+            print(f"Warning: Failed to get parser for family {family}: {e}")
+        
         messages = [{"role": "system", "content": system_prompt}]
         
         # Process historical turns
@@ -179,7 +208,8 @@ class ChatManager:
             assistant_msg = turn.get("assistantMessage", "")
             
             # Include tool results that are marked for context
-            tool_summary = self._summarize_tools(turn.get("toolCalls", []))
+            # Use family-specific serialization if parser is available
+            tool_summary = self._summarize_tools(turn.get("toolCalls", []), parser=parser)
             if tool_summary:
                 assistant_msg = f"{tool_summary}\n\n{assistant_msg}"
             
@@ -227,13 +257,19 @@ class ChatManager:
     def _summarize_tools(
         self,
         tool_calls: List[Dict[str, Any]],
+        parser: Optional["ResponseParser"] = None,
         max_result_chars: int = 5000,
     ) -> Optional[str]:
         """
         Summarize tool calls that should be included in context.
         
+        When a parser is provided, tool calls are serialized using the parser's
+        native format (e.g., Harmony tokens for GPT, XML for GLM, etc.).
+        This ensures LLMs see tool calls in a format they recognize from training.
+        
         Args:
             tool_calls: List of tool call records
+            parser: Optional parser to use for family-specific serialization
             max_result_chars: Maximum characters for tool result string (default 5000)
         """
         included_tools = [
@@ -251,9 +287,11 @@ class ChatManager:
             result = tool.get("result")
             error = tool.get("error")
             
-            summary = f"Tool: {tool_name}({json.dumps(args)})"
+            # Format result for the tool call
+            formatted_result = None
             if error:
-                summary += f"\nError: {error}"
+                # Error case - result stays None, error is passed to serializer
+                formatted_result = None
             elif result:
                 # Format result based on tool type
                 if tool_name == "read_file" and isinstance(result, dict):
@@ -275,13 +313,26 @@ class ChatManager:
                     # Apply cap as safety net
                     if len(result_str) > max_result_chars:
                         result_str = result_str[:max_result_chars] + f"\n... [truncated at {max_result_chars} chars]"
+                    
+                    formatted_result = result_str
                 else:
                     # Other tools: serialize and truncate if needed
                     result_str = json.dumps(result) if isinstance(result, dict) else str(result)
                     if len(result_str) > max_result_chars:
                         result_str = result_str[:max_result_chars] + f"... [truncated at {max_result_chars} chars]"
-                
-                summary += f"\nResult: {result_str}"
+                    
+                    formatted_result = result_str
+            
+            # Use parser's serialize_tool_call if available, otherwise fall back to generic format
+            if parser:
+                summary = parser.serialize_tool_call(tool_name, args, formatted_result, error)
+            else:
+                # Fallback to generic format (for backwards compatibility)
+                summary = f"Tool: {tool_name}({json.dumps(args)})"
+                if error:
+                    summary += f"\nError: {error}"
+                elif formatted_result:
+                    summary += f"\nResult: {formatted_result}"
             
             summaries.append(summary)
         

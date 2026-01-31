@@ -292,6 +292,40 @@ class GLMParser(ResponseParser):
         # Only remove thinking tags (internal, shouldn't be displayed)
         result = self.THINK_PATTERN.sub('', content)
         return result
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """
+        Serialize a tool call into GLM XML format for chat context.
+        
+        Format:
+        <tool_call>{tool_name}<arg_key>{k}</arg_key><arg_value>{v}</arg_value>...</tool_call>
+        Tool Result: {result}
+        """
+        # Build the tool call XML
+        args_xml = ""
+        for key, value in args.items():
+            # Convert value to string, handling complex types
+            if isinstance(value, (dict, list)):
+                value_str = json.dumps(value)
+            else:
+                value_str = str(value)
+            args_xml += f"<arg_key>{key}</arg_key><arg_value>{value_str}</arg_value>"
+        
+        tool_call_str = f"<tool_call>{tool_name}{args_xml}</tool_call>"
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 parser = GLMParser()

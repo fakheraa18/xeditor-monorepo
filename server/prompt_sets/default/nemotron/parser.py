@@ -433,6 +433,44 @@ class NemotronParser(ResponseParser):
         # Only remove thinking tags (internal, shouldn't be displayed)
         result = self.THINK_PATTERN.sub('', content)
         return result
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """
+        Serialize a tool call into Nemotron format for chat context.
+        
+        Format:
+        <tool_call>
+        <function={tool_name}>
+        <parameter={param}>{value}</parameter>
+        ...
+        </function>
+        </tool_call>
+        Tool Result: {result}
+        """
+        # Build parameter tags
+        params_str = ""
+        for param_name, param_value in args.items():
+            if isinstance(param_value, (dict, list)):
+                value_str = json.dumps(param_value)
+            else:
+                value_str = str(param_value)
+            params_str += f"<parameter={param_name}>{value_str}</parameter>\n"
+        
+        tool_call_str = f"<tool_call>\n<function={tool_name}>\n{params_str}</function>\n</tool_call>"
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 parser = NemotronParser()

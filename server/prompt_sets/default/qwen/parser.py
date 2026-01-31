@@ -393,6 +393,33 @@ class QwenParser(ResponseParser):
         # Only remove thinking tags (internal, shouldn't be displayed)
         result = self.THINK_PATTERN.sub('', content)
         return result
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """
+        Serialize a tool call into Qwen format for chat context.
+        
+        Format:
+        <tool_call>
+        {"name": "{tool_name}", "arguments": {args_json}}
+        </tool_call>
+        Tool Result: {result}
+        """
+        inner_json = json.dumps({"name": tool_name, "arguments": args})
+        tool_call_str = f"<tool_call>\n{inner_json}\n</tool_call>"
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 parser = QwenParser()

@@ -632,6 +632,9 @@ class AgentRunner:
                 llm_user_message,
                 user_context,
                 system_prompt,
+                family=model_config.get("family", "default"),
+                set_id=model_config.get("setId", "default"),
+                version=model_config.get("version"),
             )
         # Capture initial messages for debug (before any tool calls modify it)
         initial_messages = [msg.copy() for msg in messages] if debug else []

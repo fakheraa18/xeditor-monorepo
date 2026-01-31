@@ -235,6 +235,37 @@ class KimiParser(ResponseParser):
     def strip_tags(self, content: str) -> str:
         # Only remove thinking tags (internal)
         return self.THINK_PATTERN.sub("", content)
+    
+    def serialize_tool_call(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        result: Optional[Any] = None,
+        error: Optional[str] = None,
+    ) -> str:
+        """
+        Serialize a tool call into Kimi token format for chat context.
+        
+        Format:
+        <|tool_calls_section_begin|>
+        <|tool_call_begin|>functions.{tool_name}:0<|tool_call_argument_begin|>{args_json}<|tool_call_end|>
+        <|tool_calls_section_end|>
+        Tool Result: {result}
+        """
+        args_json = json.dumps(args)
+        tool_call_str = (
+            f"<|tool_calls_section_begin|>\n"
+            f"<|tool_call_begin|>functions.{tool_name}:0<|tool_call_argument_begin|>{args_json}<|tool_call_end|>\n"
+            f"<|tool_calls_section_end|>"
+        )
+        
+        if error:
+            return f"{tool_call_str}\nTool Error: {error}"
+        elif result is not None:
+            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return f"{tool_call_str}\nTool Result: {result_str}"
+        else:
+            return tool_call_str
 
 
 parser = KimiParser()
