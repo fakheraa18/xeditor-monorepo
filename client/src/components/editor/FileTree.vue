@@ -155,6 +155,8 @@
               { 'tree-item-root': item.isRoot },
             ]"
             :style="{ paddingLeft: `${item.level * 16 + 8}px` }"
+            draggable="true"
+            @dragstart="handleDragStart($event, item)"
             @click="handleItemClick(item)"
             @dblclick="handleItemDoubleClick(item)"
             @contextmenu.prevent="handleContextMenu($event, item)"
@@ -476,6 +478,19 @@ function toggleExpand(item: FlattenedNode): void {
     expandedPaths.value.delete(item.path);
   } else {
     expandedPaths.value.add(item.path);
+  }
+}
+
+function handleDragStart(event: DragEvent, item: FlattenedNode): void {
+  if (!event.dataTransfer) return;
+
+  try {
+    const relativePath = projectStore.copyRelativePath(item.path);
+    const dragText = `@${relativePath}`;
+    event.dataTransfer.setData('text/plain', dragText);
+    event.dataTransfer.effectAllowed = 'copy';
+  } catch (error) {
+    console.error('Failed to prepare drag data:', error);
   }
 }
 

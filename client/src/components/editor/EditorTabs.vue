@@ -19,6 +19,8 @@
           :name="tab.id"
           class="editor-tab"
           :class="{ 'tab-dirty': tab.isDirty }"
+          draggable="true"
+          @dragstart="handleDragStart($event, tab)"
         >
           <template v-slot:default>
             <div class="tab-content row items-center no-wrap">
@@ -33,12 +35,7 @@
               <span class="tab-filename ellipsis">{{ tab.fileName }}</span>
               <!-- Modified indicator, preview toggle, and close button -->
               <div class="tab-actions">
-                <q-icon
-                  v-if="tab.isDirty"
-                  name="circle"
-                  size="8px"
-                  class="dirty-indicator"
-                />
+                <q-icon v-if="tab.isDirty" name="circle" size="8px" class="dirty-indicator" />
                 <q-btn
                   v-if="isTabPreviewable(tab)"
                   flat
@@ -93,10 +90,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useEditorStore } from '../../stores/editor';
+import { useProjectStore } from '../../stores/project';
 import { getFileIcon } from '../../utils/fileIcons';
 import { isPreviewable, getFileExtension } from '../../config/previewable';
 
 const editorStore = useEditorStore();
+const projectStore = useProjectStore();
 
 const tabs = computed(() => editorStore.tabs);
 const activeTabId = computed({
@@ -125,6 +124,31 @@ function isTabPreviewable(tab: { filePath: string }): boolean {
 
 function handleToggleViewMode(tabId: string) {
   editorStore.toggleViewMode(tabId);
+}
+
+function handleDragStart(event: DragEvent, tab: { filePath: string }): void {
+  if (!event.dataTransfer) return;
+
+  try {
+    let workspacePath: string | null = null;
+
+    // Check if it's already a valid workspace path
+    if (projectStore.resolveWorkspacePath(tab.filePath)) {
+      workspacePath = tab.filePath;
+    } else {
+      // Try to resolve from absolute path
+      workspacePath = projectStore.resolveAbsolutePath(tab.filePath);
+    }
+
+    if (!workspacePath) return;
+
+    const relativePath = projectStore.copyRelativePath(workspacePath);
+    const dragText = `@${relativePath}`;
+    event.dataTransfer.setData('text/plain', dragText);
+    event.dataTransfer.effectAllowed = 'copy';
+  } catch (error) {
+    console.error('Failed to prepare drag data:', error);
+  }
 }
 </script>
 
@@ -232,7 +256,9 @@ function handleToggleViewMode(tabId: string) {
   min-width: 18px !important;
   min-height: 18px !important;
   color: #757575;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .tab-preview-toggle-btn:hover {
@@ -247,7 +273,9 @@ function handleToggleViewMode(tabId: string) {
   min-width: 18px !important;
   min-height: 18px !important;
   color: #757575;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .tab-close-btn:hover {
@@ -292,4 +320,3 @@ function handleToggleViewMode(tabId: string) {
   color: #bdbdbd;
 }
 </style>
-

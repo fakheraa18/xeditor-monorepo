@@ -944,6 +944,42 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   /**
+   * Resolve an absolute system path to editor's folder-based path format: {folderId}/{relativePath}
+   * Returns null if the path is not under any project folder.
+   */
+  function resolveAbsolutePath(absolutePath: string): string | null {
+    if (!activeProject.value) {
+      return null;
+    }
+
+    // Normalize the absolute path (handle both / and \ separators)
+    const normalizedAbsolutePath = absolutePath.replace(/\\/g, '/');
+
+    // Check each project folder to see if the absolute path is under it
+    for (const folder of activeProject.value.folders) {
+      const normalizedFolderPath = folder.systemPath.replace(/\\/g, '/');
+
+      // Check if the absolute path starts with the folder's system path
+      if (
+        normalizedAbsolutePath.startsWith(normalizedFolderPath + '/') ||
+        normalizedAbsolutePath === normalizedFolderPath
+      ) {
+        // Calculate relative path
+        const relativePath =
+          normalizedAbsolutePath === normalizedFolderPath
+            ? ''
+            : normalizedAbsolutePath.slice(normalizedFolderPath.length + 1);
+
+        // Return in editor format: {folderId}/{relativePath}
+        return relativePath ? `${folder.id}/${relativePath}` : folder.id;
+      }
+    }
+
+    // Path is not under any project folder
+    return null;
+  }
+
+  /**
    * Copy absolute path to clipboard
    */
   function copyAbsolutePath(workspacePath: string): string {
@@ -1099,6 +1135,7 @@ export const useProjectStore = defineStore('project', () => {
     resolveWorkspacePath,
     copyAbsolutePath,
     copyRelativePath,
+    resolveAbsolutePath,
     deletePath,
     getGitHeadContent,
     reset,
