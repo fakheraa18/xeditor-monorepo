@@ -679,6 +679,363 @@ class IndexBuilder:
         """Resume indexing."""
         self.paused = False
     
+    def _load_existing_vectors(self) -> Dict[str, List[float]]:
+        """Load existing vectors from disk."""
+        vectors_binary_path = self.index_path / 'vectors.f32'
+        vectors_index_path = self.index_path / 'vectors.index.json'
+        existing_vectors = {}
+        
+        if vectors_index_path.exists() and vectors_binary_path.exists():
+            with open(vectors_index_path, 'r', encoding='utf-8') as f:
+                vector_index = json.load(f)
+            
+            with open(vectors_binary_path, 'rb') as f:
+                for chunk_id, info in vector_index.items():
+                    offset = info['offset']
+                    dim = info['dim']
+                    f.seek(offset)
+                    vector_bytes = f.read(dim * 4)
+                    vector = struct.unpack(f'{dim}f', vector_bytes)
+                    existing_vectors[chunk_id] = list(vector)
+        
+        return existing_vectors
+    
+    def _file_belongs_to_folders(
+        self,
+        file_path: str,
+        folder_ids: Set[str],
+        folder_names: Set[str],
+        folder_name_to_id: Dict[str, str],
+    ) -> bool:
+        """
+        Check if a file path belongs to any of the specified folders.
+        
+        IMPORTANT: This method must match by folder ID, not just by name, because
+        multiple folders can have the same sanitized name but different IDs.
+        """
+        path_parts = file_path.split('/')
+        if not path_parts:
+            return False
+        
+        first_part = path_parts[0]
+        if not first_part:
+            return False
+        
+        # Check if it's a UUID (legacy format: 8-4-4-4-12 hex digits)
+        uuid_pattern = re.compile(r'^[\w-]{8}-[\w-]{4}-[\w-]{4}-[\w-]{4}-[\w-]{12}$')
+        if uuid_pattern.match(first_part):
+            # Legacy format: first part is folder ID, compare directly
+            return first_part in folder_ids
+        else:
+            # New format: first part is sanitized folder name
+            # CRITICAL: We must resolve the folder name to its ID using the existing mapping,
+            # then check if that ID is in the set of folder IDs being indexed.
+            # This prevents false matches when multiple folders have the same name.
+            folder_id_from_name = folder_name_to_id.get(first_part)
+            if folder_id_from_name:
+                # Resolved to a folder ID - check if it's in the set of folders being indexed
+                return folder_id_from_name in folder_ids
+            else:
+                # Folder name not found in mapping - file doesn't belong to any indexed folder
+                return False
+    
+    async def index_folders(
+        self,
+        folders: List[Dict[str, Any]],  # [{id, name, path}]
+        show_hidden: bool = False,
+        hf_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Incrementally index only the specified folders (merge with existing index).
+        Removes any existing data for these folders first, then adds new data.
+        
+        Args:
+            folders: List of folder objects with id, name, path
+            show_hidden: Whether to include hidden files
+            hf_token: Hugging Face token for gated models
+        """
+        self.cancelled = False
+        self.paused = False
+        
+        try:
+            # Load existing index
+            existing_data = self.project_manager.load_index_data(self.project_id)
+            if not existing_data:
+                # No existing index, fall back to full build
+                return await self.build_index(folders, show_hidden, hf_token)
+            
+            existing_symbols = existing_data.get('symbols', [])
+            existing_edges = existing_data.get('edges', [])
+            existing_chunks = existing_data.get('chunks', [])
+            existing_manifests = existing_data.get('metadata', {}).get('fileManifests', [])
+            existing_metadata = existing_data.get('metadata', {})
+            existing_folder_ids = set(existing_metadata.get('indexedFolderIds', []))
+            existing_folder_names_map = existing_metadata.get('indexedFolderNames', {})
+            
+            # Build folder name -> ID mapping for new folders
+            folder_ids_to_index = {f['id'] for f in folders}
+            folder_names_to_index = {sanitize_folder_name(f['name']) for f in folders}
+            folder_name_to_id: Dict[str, str] = {}
+            for folder in folders:
+                sanitized_name = sanitize_folder_name(folder['name'])
+                folder_name_to_id[sanitized_name] = folder['id']
+            
+            # Phase 1: Remove existing data for folders being indexed
+            await self.notify_progress({
+                'phase': 'scanning',
+                'filesProcessed': 0,
+                'totalFiles': 0,
+            })
+            
+            # Identify files belonging to folders being indexed
+            files_to_remove = set()
+            for manifest in existing_manifests:
+                file_path = manifest.get('filePath', '')
+                if self._file_belongs_to_folders(
+                    file_path,
+                    folder_ids_to_index,
+                    folder_names_to_index,
+                    existing_folder_names_map,
+                ):
+                    files_to_remove.add(file_path)
+            
+            # Remove symbols, edges, chunks for files in folders being indexed
+            updated_symbols = [
+                s for s in existing_symbols
+                if s.get('filePath') not in files_to_remove
+            ]
+            updated_edges = [
+                e for e in existing_edges
+                if e.get('filePath') not in files_to_remove
+            ]
+            updated_chunks = [
+                c for c in existing_chunks
+                if c.get('filePath') not in files_to_remove
+            ]
+            updated_manifests = [
+                m for m in existing_manifests
+                if m.get('filePath') not in files_to_remove
+            ]
+            
+            # Remove vectors for chunks in folders being indexed
+            removed_chunk_ids = {
+                c.get('chunkId') for c in existing_chunks
+                if c.get('filePath') in files_to_remove
+            }
+            existing_vectors = self._load_existing_vectors()
+            updated_vectors = {
+                k: v for k, v in existing_vectors.items()
+                if k not in removed_chunk_ids
+            }
+            
+            # Phase 2: Scan and parse new folders
+            all_files = []
+            for folder in folders:
+                if self.cancelled:
+                    raise Exception('Indexing cancelled')
+                
+                sanitized_name = sanitize_folder_name(folder['name'])
+                folder_name_to_id[sanitized_name] = folder['id']
+                
+                files = await enumerate_files(folder['path'], sanitized_name, folder['id'], show_hidden)
+                all_files.extend(files)
+            
+            if self.cancelled:
+                raise Exception('Indexing cancelled')
+            
+            # Phase 3: Parse files
+            await self.notify_progress({
+                'phase': 'parsing',
+                'filesProcessed': 0,
+                'totalFiles': len(all_files),
+            })
+            
+            new_symbols = []
+            new_edges = []
+            new_chunks = []
+            new_manifests = []
+            
+            for i, file_info in enumerate(all_files):
+                if self.cancelled:
+                    raise Exception('Indexing cancelled')
+                
+                while self.paused and not self.cancelled:
+                    await asyncio.sleep(0.1)
+                
+                await self.notify_progress({
+                    'phase': 'parsing',
+                    'currentFile': file_info['filePath'],
+                    'filesProcessed': i,
+                    'totalFiles': len(all_files),
+                })
+                
+                try:
+                    # Read file content
+                    with open(file_info['systemPath'], 'r', encoding='utf-8', errors='replace') as f:
+                        content = f.read()
+                    
+                    # Skip very large files (5MB limit)
+                    MAX_PARSE_SIZE = 5 * 1024 * 1024
+                    if len(content.encode('utf-8')) > MAX_PARSE_SIZE:
+                        print(f"Skipping large file {file_info['filePath']}")
+                        continue
+                    
+                    language = detect_language(file_info['systemPath'])
+                    content_hash = hash_content(content)
+                    
+                    # Parse file
+                    parse_result = parse_to_symbols_and_chunks(
+                        file_info['filePath'],
+                        content,
+                        language,
+                    )
+                    
+                    # Map symbols and edges
+                    for symbol in parse_result.get('symbols', []):
+                        new_symbols.append(symbol)
+                    
+                    for edge in parse_result.get('edges', []):
+                        new_edges.append(edge)
+                    
+                    # Map chunks and add content hash
+                    for chunk in parse_result.get('chunks', []):
+                        chunk['contentHash'] = content_hash
+                        # Store preview (first 500 chars)
+                        chunk_content = chunk.get('content', '')
+                        chunk['preview'] = chunk_content[:500] if chunk_content else ''
+                        new_chunks.append(chunk)
+                    
+                    new_manifests.append({
+                        'filePath': file_info['filePath'],
+                        'language': language,
+                        'size': file_info['size'],
+                        'lastModified': file_info['lastModified'],
+                        'contentHash': content_hash,
+                    })
+                
+                except Exception as e:
+                    print(f"Failed to parse {file_info['filePath']}: {e}")
+                    continue
+            
+            if self.cancelled:
+                raise Exception('Indexing cancelled')
+            
+            # Phase 4: Generate embeddings for new chunks
+            # Get embedding dimension from existing index
+            existing_manifest = existing_metadata.get('manifest', {})
+            existing_dim = existing_manifest.get('embeddingDim', 384)
+            
+            if new_chunks:
+                await self.notify_progress({
+                    'phase': 'embedding',
+                    'filesProcessed': 0,
+                    'totalFiles': len(new_chunks),
+                })
+                
+                # Verify embedding dimension matches existing index
+                _, dim = embed_many(self.embedding_model_id, ['test'], token=hf_token)
+                
+                if dim != existing_dim:
+                    raise Exception(
+                        f'Embedding dimension mismatch: existing={existing_dim}, new={dim}. '
+                        'Please rebuild the index with the same embedding model.'
+                    )
+                
+                # Process chunks in batches
+                batch_size = 20
+                
+                for i in range(0, len(new_chunks), batch_size):
+                    if self.cancelled:
+                        raise Exception('Indexing cancelled')
+                    
+                    while self.paused and not self.cancelled:
+                        await asyncio.sleep(0.1)
+                    
+                    batch = new_chunks[i:i + batch_size]
+                    chunk_texts = [chunk.get('preview', '') for chunk in batch]
+                    
+                    await self.notify_progress({
+                        'phase': 'embedding',
+                        'filesProcessed': i,
+                        'totalFiles': len(new_chunks),
+                    })
+                    
+                    try:
+                        embeddings, _ = embed_many(self.embedding_model_id, chunk_texts, token=hf_token)
+                        
+                        for j, chunk in enumerate(batch):
+                            if j < len(embeddings):
+                                updated_vectors[chunk['chunkId']] = embeddings[j]
+                    except Exception as e:
+                        print(f"Failed to embed batch {i}-{i+len(batch)}: {e}")
+                        continue
+            
+            if self.cancelled:
+                raise Exception('Indexing cancelled')
+            
+            # Phase 5: Merge data and update metadata
+            merged_symbols = updated_symbols + new_symbols
+            merged_edges = updated_edges + new_edges
+            merged_chunks = updated_chunks + new_chunks
+            merged_manifests = updated_manifests + new_manifests
+            
+            # Update folder IDs and names mapping
+            updated_folder_ids = existing_folder_ids.copy()
+            updated_folder_ids.update(folder_ids_to_index)
+            
+            updated_folder_names_map = existing_folder_names_map.copy()
+            updated_folder_names_map.update(folder_name_to_id)
+            
+            # Phase 6: Save merged index
+            now = int(datetime.now().timestamp() * 1000)
+            existing_manifest = existing_metadata.get('manifest', {})
+            
+            manifest = {
+                'projectId': self.project_id,
+                'version': existing_manifest.get('version', 2),
+                'createdAt': existing_manifest.get('createdAt', now),
+                'updatedAt': now,
+                'fileCount': len(merged_manifests),
+                'symbolCount': len(merged_symbols),
+                'chunkCount': len(merged_chunks),
+                'embeddingModelId': self.embedding_model_id,
+                'embeddingDim': existing_dim,
+            }
+            
+            index_data = {
+                'metadata': {
+                    'manifest': manifest,
+                    'fileManifests': merged_manifests,
+                    'indexedFolderIds': list(updated_folder_ids),
+                    'indexedFolderNames': updated_folder_names_map,
+                },
+                'symbols': merged_symbols,
+                'edges': merged_edges,
+                'chunks': merged_chunks,
+            }
+            
+            await self._save_index(index_data, updated_vectors)
+            
+            await self.notify_progress({
+                'phase': 'complete',
+                'filesProcessed': len(all_files),
+                'totalFiles': len(all_files),
+            })
+            
+            return {
+                'success': True,
+                'manifest': manifest,
+            }
+            
+        except Exception as e:
+            await self.notify_progress({
+                'phase': 'error',
+                'filesProcessed': 0,
+                'totalFiles': 0,
+                'error': str(e),
+            })
+            raise
+    
     async def update_files(
         self,
         changed_files: List[Dict[str, Any]],  # [{filePath, systemPath, folderId}]
@@ -961,6 +1318,43 @@ async def handle_index_build(
     
     try:
         result = await builder.build_index(folders, show_hidden, hf_token)
+        return {'success': True, **result}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+    finally:
+        if project_id in _active_builders:
+            del _active_builders[project_id]
+
+
+async def handle_index_folders(
+    payload: Dict[str, Any],
+    progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+) -> Dict[str, Any]:
+    """RPC handler for incrementally indexing folders."""
+    project_id = payload.get('projectId', '')
+    folders = payload.get('folders', [])
+    show_hidden = payload.get('showHidden', False)
+    embedding_model_id = payload.get('embeddingModelId', 'sentence-transformers/all-MiniLM-L6-v2')
+    hf_token = payload.get('hfToken')
+    
+    if not project_id:
+        return {'success': False, 'error': 'Project ID is required'}
+    
+    if not folders:
+        return {'success': False, 'error': 'Folders are required'}
+    
+    # Cancel any existing builder for this project
+    if project_id in _active_builders:
+        _active_builders[project_id].cancel()
+    
+    builder = IndexBuilder(project_id, embedding_model_id)
+    _active_builders[project_id] = builder
+    
+    if progress_callback:
+        builder.add_progress_callback(progress_callback)
+    
+    try:
+        result = await builder.index_folders(folders, show_hidden, hf_token)
         return {'success': True, **result}
     except Exception as e:
         return {'success': False, 'error': str(e)}

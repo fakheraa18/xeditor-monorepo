@@ -51,6 +51,7 @@ from indexing_builder import (
     handle_index_list_files,
     handle_retrieve_chunks,
     handle_index_update_files,
+    handle_index_folders,
 )
 from sets.manager import (
     handle_list_sets,
@@ -1328,6 +1329,31 @@ async def websocket_control_endpoint(websocket: WebSocket):
                             }))
                     
                     asyncio.create_task(run_indexing())
+                    
+                elif msg_type == "index_folders":
+                    async def progress_callback(progress: dict):
+                        await websocket.send_text(json.dumps({
+                            "type": "index_progress",
+                            "id": request_id,
+                            "payload": progress
+                        }))
+                    
+                    async def run_folder_indexing():
+                        try:
+                            response = await handle_index_folders(message.get("payload"), progress_callback)
+                            await websocket.send_text(json.dumps({
+                                "type": "index_folders_response",
+                                "id": request_id,
+                                "payload": response
+                            }))
+                        except Exception as e:
+                            await websocket.send_text(json.dumps({
+                                "type": "index_folders_response",
+                                "id": request_id,
+                                "payload": {"success": False, "error": str(e)}
+                            }))
+                    
+                    asyncio.create_task(run_folder_indexing())
                     
                 elif msg_type == "index_update_files":
                     async def progress_callback(progress: dict):

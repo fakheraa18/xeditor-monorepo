@@ -92,10 +92,7 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
     try {
       // Connect to both WebSockets in parallel
       console.log('Connecting to /ws/stream and /ws/control');
-      const [streamOk, controlOk] = await Promise.all([
-        connectStreamWs(),
-        connectControlWs(),
-      ]);
+      const [streamOk, controlOk] = await Promise.all([connectStreamWs(), connectControlWs()]);
       isConnected.value = streamOk && controlOk;
 
       if (!isConnected.value) {
@@ -124,7 +121,10 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
       return await streamConnectPromise;
     }
 
-    if (streamWs && (streamWs.readyState === WebSocket.CLOSING || streamWs.readyState === WebSocket.CLOSED)) {
+    if (
+      streamWs &&
+      (streamWs.readyState === WebSocket.CLOSING || streamWs.readyState === WebSocket.CLOSED)
+    ) {
       streamWs = null;
       streamConnectPromise = null;
     }
@@ -174,7 +174,10 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
       return await controlConnectPromise;
     }
 
-    if (controlWs && (controlWs.readyState === WebSocket.CLOSING || controlWs.readyState === WebSocket.CLOSED)) {
+    if (
+      controlWs &&
+      (controlWs.readyState === WebSocket.CLOSING || controlWs.readyState === WebSocket.CLOSED)
+    ) {
       controlWs = null;
       controlConnectPromise = null;
     }
@@ -291,6 +294,15 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
         return;
       }
 
+      // Handle index folders completion
+      if (type === 'index_folders_response' && pendingRequests.has(id)) {
+        const { resolve: reqResolve } = pendingRequests.get(id)!;
+        pendingRequests.delete(id);
+        indexProgressCallbacks.delete(id);
+        reqResolve(payload);
+        return;
+      }
+
       // Handle file_changed push events (control only - never from stream)
       if (type === 'file_changed' && payload && source === 'control') {
         const filePath = payload.path as string;
@@ -379,7 +391,9 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
       streamWs = null;
       streamConnectPromise = null;
       // Don't reject streaming requests immediately - they can be resumed
-      console.log(`Stream WebSocket closed. ${streamingRequests.size} active streams pending resume.`);
+      console.log(
+        `Stream WebSocket closed. ${streamingRequests.size} active streams pending resume.`,
+      );
     } else if (source === 'control') {
       controlWs = null;
       controlConnectPromise = null;
@@ -390,8 +404,8 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
     }
 
     // Update overall connection state
-    isConnected.value = (streamWs?.readyState === WebSocket.OPEN) &&
-                        (controlWs?.readyState === WebSocket.OPEN);
+    isConnected.value =
+      streamWs?.readyState === WebSocket.OPEN && controlWs?.readyState === WebSocket.OPEN;
   }
 
   /**
@@ -419,14 +433,16 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
 
     for (const [id, state] of streamingRequests) {
       try {
-        streamWs.send(JSON.stringify({
-          type: 'stream_resume',
-          id,
-          payload: {
-            streamId: id,
-            fromSeq: state.lastSeq,
-          },
-        }));
+        streamWs.send(
+          JSON.stringify({
+            type: 'stream_resume',
+            id,
+            payload: {
+              streamId: id,
+              fromSeq: state.lastSeq,
+            },
+          }),
+        );
         console.log(`Sent resume request for stream ${id} from seq ${state.lastSeq}`);
       } catch (e) {
         console.error(`Failed to resume stream ${id}:`, e);
@@ -467,7 +483,7 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
     const id = Math.random().toString(36).substring(7);
 
     // Register progress callback if provided (for indexing)
-    if (onProgress && type === 'index_build') {
+    if (onProgress && (type === 'index_build' || type === 'index_folders')) {
       indexProgressCallbacks.set(id, onProgress);
     }
 
@@ -482,12 +498,14 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
       } catch (err) {
         pendingRequests.delete(id);
         indexProgressCallbacks.delete(id);
-        reject(new Error(`Failed to send request: ${err instanceof Error ? err.message : String(err)}`));
+        reject(
+          new Error(`Failed to send request: ${err instanceof Error ? err.message : String(err)}`),
+        );
         return;
       }
 
       // Timeout after 60 seconds (or 5 minutes for indexing)
-      const timeout = type === 'index_build' ? 300000 : 60000;
+      const timeout = type === 'index_build' || type === 'index_folders' ? 300000 : 60000;
       setTimeout(() => {
         if (pendingRequests.has(id)) {
           pendingRequests.delete(id);
@@ -570,7 +588,11 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
       } catch (err) {
         clearTimeout(timeoutId);
         streamingRequests.delete(id);
-        reject(new Error(`Failed to send stream request: ${err instanceof Error ? err.message : String(err)}`));
+        reject(
+          new Error(
+            `Failed to send stream request: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
         return;
       }
     });

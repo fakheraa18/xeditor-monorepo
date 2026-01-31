@@ -84,7 +84,9 @@ export class IndexOrchestrator {
   ): Promise<{ symbols: Symbol[]; edges: GraphEdge[]; chunks: CodeChunk[] }> {
     const companionStore = useLocalCompanionStore();
     if (!companionStore.isConnected) {
-      throw new Error('Local companion connection required for parsing. Please ensure the companion server is running.');
+      throw new Error(
+        'Local companion connection required for parsing. Please ensure the companion server is running.',
+      );
     }
 
     const response = await companionStore.request<{
@@ -314,7 +316,9 @@ export class IndexOrchestrator {
     // This method is kept for compatibility but companion handles incremental updates automatically
     const companionStore = useLocalCompanionStore();
     if (!companionStore.isConnected) {
-      throw new Error('Local companion connection required for file updates. Please ensure the companion server is running.');
+      throw new Error(
+        'Local companion connection required for file updates. Please ensure the companion server is running.',
+      );
     }
     // Companion handles file watching and incremental indexing automatically
     // No action needed here - companion will detect file changes and update the index
@@ -325,7 +329,9 @@ export class IndexOrchestrator {
     // This method is kept for compatibility but companion handles deletions automatically
     const companionStore = useLocalCompanionStore();
     if (!companionStore.isConnected) {
-      throw new Error('Local companion connection required for file updates. Please ensure the companion server is running.');
+      throw new Error(
+        'Local companion connection required for file updates. Please ensure the companion server is running.',
+      );
     }
     // Companion handles file watching and detects deletions automatically
     // No action needed here - companion will detect file deletions and update the index
@@ -345,7 +351,7 @@ export class IndexOrchestrator {
    * Incrementally index only the specified folders (append to existing index)
    * Removes any existing data for these folders first, then adds new data
    *
-   * Note: Incremental indexing now requires companion. Falls back to full rebuild.
+   * Note: Incremental indexing now requires companion.
    */
   async indexFolders(
     projectId: ProjectId,
@@ -356,9 +362,78 @@ export class IndexOrchestrator {
       throw new Error('Indexing already in progress');
     }
 
-    // Incremental indexing now requires companion
-    // Fall back to full rebuild via companion
-    await this.buildIndex(projectId, foldersToIndex, showHiddenFiles);
+    this.indexingInProgress = true;
+    this.indexingPaused = false;
+    this.indexingCancelled = false;
+    this.currentProjectId = projectId;
+
+    const companionStore = useLocalCompanionStore();
+    const projectStore = useProjectStore();
+
+    // Use companion indexing if available
+    if (companionStore.isConnected && foldersToIndex.every((f) => f.systemPath)) {
+      try {
+        // Start incremental folder indexing via companion
+        const indexPromise = companionStore.request<{
+          success: boolean;
+          error?: string;
+        }>(
+          'index_folders',
+          {
+            projectId,
+            folders: foldersToIndex.map((f) => ({
+              id: f.id,
+              name: f.name,
+              path: f.systemPath,
+            })),
+            showHidden: showHiddenFiles,
+            embeddingModelId: projectStore.getEmbeddingModelId(),
+            hfToken: companionStore.huggingFaceToken || undefined,
+          },
+          (progress: unknown) => {
+            // Forward progress updates to IndexOrchestrator
+            if (progress && typeof progress === 'object' && 'phase' in progress) {
+              this.notifyProgress(progress as IndexingProgress);
+            }
+          },
+        );
+
+        // Wait for indexing to complete
+        const response = await indexPromise;
+
+        if (!response.success) {
+          throw new Error(response.error ?? 'Indexing failed');
+        }
+
+        // Progress updates are handled via WebSocket 'index_progress' messages
+        // The localCompanion store should forward these to IndexOrchestrator
+        // For now, we'll mark as complete when the indexing finishes
+        this.notifyProgress({
+          phase: 'complete',
+          filesProcessed: 0,
+          totalFiles: 0,
+        });
+
+        this.indexingInProgress = false;
+        return;
+      } catch (error) {
+        console.error('Companion folder indexing failed:', error);
+        this.indexingInProgress = false;
+        this.notifyProgress({
+          phase: 'error',
+          filesProcessed: 0,
+          totalFiles: 0,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        throw error;
+      }
+    }
+
+    // Companion indexing is required - no browser fallback
+    this.indexingInProgress = false;
+    throw new Error(
+      'Local companion connection required for indexing. Please ensure the companion server is running and folders have systemPath set.',
+    );
   }
 
   /**
@@ -368,7 +443,9 @@ export class IndexOrchestrator {
   removeFolderFromIndex(_projectId: ProjectId, _folderId: ProjectFolderId): void {
     const companionStore = useLocalCompanionStore();
     if (!companionStore.isConnected) {
-      throw new Error('Local companion connection required for folder management. Please ensure the companion server is running.');
+      throw new Error(
+        'Local companion connection required for folder management. Please ensure the companion server is running.',
+      );
     }
     // Companion handles folder removal automatically during indexing
     // If needed, we could add a companion RPC call here, but companion's indexing
