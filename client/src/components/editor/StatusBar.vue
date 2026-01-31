@@ -15,7 +15,7 @@
         :class="statusClass"
         @click="navigateToIndex"
       >
-        <q-icon :name="statusIcon" size="14px" :class="{ 'rotating': isProcessing }" />
+        <q-icon :name="statusIcon" size="14px" :class="{ rotating: isProcessing }" />
         <span>{{ statusText }}</span>
         <q-tooltip :delay="300">{{ statusTooltip }}</q-tooltip>
       </div>
@@ -26,10 +26,7 @@
         class="status-item clickable"
         @click="handleReindexOrResume"
       >
-        <q-icon
-          :name="progress?.phase === 'paused' ? 'play_arrow' : 'refresh'"
-          size="14px"
-        />
+        <q-icon :name="progress?.phase === 'paused' ? 'play_arrow' : 'refresh'" size="14px" />
         <q-tooltip :delay="300">
           {{ progress?.phase === 'paused' ? 'Resume Indexing' : 'Reindex Codebase' }}
         </q-tooltip>
@@ -44,7 +41,31 @@
         <q-icon :name="companionConnected ? 'terminal' : 'portable_wifi_off'" size="14px" />
         <span>{{ companionConnected ? 'Companion' : 'Offline' }}</span>
         <q-tooltip :delay="300">
-          {{ companionConnected ? 'Local Companion connected' : 'Local Companion disconnected - Click to connect' }}
+          {{
+            companionConnected
+              ? 'Local Companion connected'
+              : 'Local Companion disconnected - Click to connect'
+          }}
+        </q-tooltip>
+      </div>
+
+      <!-- Update Info -->
+      <div
+        v-if="updateInfo"
+        class="status-item"
+        :class="updateInfo.link ? 'clickable' : ''"
+        @click="updateInfo.link ? handleUpdateLinkClick(updateInfo.link) : undefined"
+      >
+        <q-icon name="system_update" size="14px" class="status-warning" />
+        <span class="status-warning">
+          {{
+            updateInfo.text ||
+            updateInfo.message ||
+            (updateInfo.version ? `v${updateInfo.version} available` : 'Update available')
+          }}
+        </span>
+        <q-tooltip v-if="updateInfo.message || updateInfo.text" :delay="300">
+          {{ updateInfo.message || updateInfo.text }}
         </q-tooltip>
       </div>
 
@@ -105,23 +126,18 @@ import { useEditorStore } from '../../stores/editor';
 import { useIndexingStore } from '../../stores/indexing';
 import { useProjectStore } from '../../stores/project';
 import { useLocalCompanionStore } from '../../stores/localCompanion';
+import { useUpdateInfo } from '../../composables/useUpdateInfo';
 
 const router = useRouter();
 const editorStore = useEditorStore();
 const indexingStore = useIndexingStore();
 const projectStore = useProjectStore();
 const companionStore = useLocalCompanionStore();
+const { updateInfo, handleLinkClick } = useUpdateInfo();
 
 const { cursorPosition, selectedText, activeTab } = storeToRefs(editorStore);
-const {
-  statusText,
-  statusIcon,
-  statusTooltip,
-  statusClass,
-  isProcessing,
-  progress,
-  isIndexing,
-} = storeToRefs(indexingStore);
+const { statusText, statusIcon, statusTooltip, statusClass, isProcessing, progress, isIndexing } =
+  storeToRefs(indexingStore);
 const { hasFolders, activeProjectId } = storeToRefs(projectStore);
 
 const companionConnected = computed(() => companionStore.isConnected);
@@ -185,6 +201,10 @@ async function handleReindexOrResume() {
   } else {
     await indexingStore.reindex(activeProjectId.value);
   }
+}
+
+function handleUpdateLinkClick(link: string): void {
+  handleLinkClick(link);
 }
 </script>
 
