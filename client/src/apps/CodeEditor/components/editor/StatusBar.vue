@@ -122,11 +122,11 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
-import { useEditorStore } from '../../../../stores/editor';
-import { useIndexingStore } from '../../../../stores/indexing';
-import { useProjectStore } from '../../../../stores/project';
+import { useEditorStore } from '../../stores/editor';
+import { useIndexingStore } from '../../stores/indexing';
+import { useProjectStore } from '../../stores/project';
 import { useLocalCompanionStore } from '../../../../stores/localCompanion';
-import { useUpdateInfo } from '../../../../composables/useUpdateInfo';
+import { useUpdateInfo } from '../../composables/useUpdateInfo';
 
 const router = useRouter();
 const editorStore = useEditorStore();

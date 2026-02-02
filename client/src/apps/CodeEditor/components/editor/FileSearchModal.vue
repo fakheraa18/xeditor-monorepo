@@ -77,9 +77,7 @@
           <div v-else-if="searchQuery" class="q-pa-md text-center text-grey-7">
             No files match your search.
           </div>
-          <div v-else class="q-pa-md text-center text-grey-7">
-            Type to start searching files...
-          </div>
+          <div v-else class="q-pa-md text-center text-grey-7">Type to start searching files...</div>
         </q-scroll-area>
       </q-card-section>
 
@@ -110,12 +108,12 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { QInput } from 'quasar';
 import Fuse from 'fuse.js';
-import { useSearchStore } from 'src/stores/search';
-import { useProjectStore } from 'src/stores/project';
-import { useEditorStore } from 'src/stores/editor';
-import { useShortcuts } from 'src/composables/useShortcuts';
+import { useSearchStore } from '../../stores/search';
+import { useProjectStore } from '../../stores/project';
+import { useEditorStore } from '../../stores/editor';
+import { useShortcuts } from '../../composables/useShortcuts';
 import SearchSettings from './SearchSettings.vue';
-import type { FileNode } from 'src/core/types';
+import type { FileNode } from '../../core/types';
 
 interface SearchableFile {
   name: string;
@@ -138,7 +136,7 @@ watch(isSearchModalOpen, async (isOpen) => {
     // Reset search query when opening
     searchQuery.value = '';
     selectedIndex.value = 0;
-    
+
     // Ensure focus after modal opens and animations start
     await nextTick();
     setTimeout(() => {
@@ -164,9 +162,9 @@ const allFiles = computed<SearchableFile[]>(() => {
         files.push({
           name: node.name,
           path: node.path,
-          relativePath: node.path.includes('/') 
-            ? node.path.split('/').slice(1).join('/') 
-            : node.name
+          relativePath: node.path.includes('/')
+            ? node.path.split('/').slice(1).join('/')
+            : node.name,
         });
       } else if (node.type === 'directory' && node.children) {
         traverse(node.children, node.path);
@@ -191,17 +189,23 @@ const fuse = computed(() => new Fuse(allFiles.value, fuseOptions));
 // Search logic
 const searchResults = computed(() => {
   if (!searchQuery.value) return [];
-  
+
   let results = fuse.value.search(searchQuery.value);
 
   // Apply include/exclude patterns if they exist
   if (includePattern.value || excludePattern.value) {
-    const includes = includePattern.value.split(',').map(p => p.trim()).filter(Boolean);
-    const excludes = excludePattern.value.split(',').map(p => p.trim()).filter(Boolean);
+    const includes = includePattern.value
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const excludes = excludePattern.value
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
 
-    results = results.filter(result => {
+    results = results.filter((result) => {
       const path = result.item.relativePath;
-      
+
       // Simple glob-to-regex conversion for demonstration
       // In a real app, you might want a library like 'picomatch'
       const matchPattern = (pattern: string, target: string) => {
@@ -214,11 +218,11 @@ const searchResults = computed(() => {
       };
 
       if (includes.length > 0) {
-        if (!includes.some(pattern => matchPattern(pattern, path))) return false;
+        if (!includes.some((pattern) => matchPattern(pattern, path))) return false;
       }
 
       if (excludes.length > 0) {
-        if (excludes.some(pattern => matchPattern(pattern, path))) return false;
+        if (excludes.some((pattern) => matchPattern(pattern, path))) return false;
       }
 
       return true;
@@ -248,7 +252,8 @@ function handleKeyDown(event: KeyboardEvent) {
     selectedIndex.value = (selectedIndex.value + 1) % searchResults.value.length;
   } else if (event.key === 'ArrowUp') {
     event.preventDefault();
-    selectedIndex.value = (selectedIndex.value - 1 + searchResults.value.length) % searchResults.value.length;
+    selectedIndex.value =
+      (selectedIndex.value - 1 + searchResults.value.length) % searchResults.value.length;
   } else if (event.key === 'Enter') {
     event.preventDefault();
     const selectedResult = searchResults.value[selectedIndex.value];
@@ -289,4 +294,3 @@ function selectResult(file: SearchableFile) {
   border-left: 3px solid var(--q-primary);
 }
 </style>
-

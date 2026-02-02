@@ -258,13 +258,13 @@
 import { computed, ref, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
-import { useEditorStore } from '../../../../stores/editor';
-import { useProjectStore } from '../../../../stores/project';
-import { useIndexingStore } from '../../../../stores/indexing';
+import { useEditorStore } from '../../stores/editor';
+import { useProjectStore } from '../../stores/project';
+import { useIndexingStore } from '../../stores/indexing';
 import { useLocalCompanionStore } from '../../../../stores/localCompanion';
-import { getFileIcon, getFolderIcon } from '../../../../utils/fileIcons';
+import { getFileIcon, getFolderIcon } from '../../utils/fileIcons';
 import FolderPickerDialog from './FolderPickerDialog.vue';
-import type { FileNode } from '../../../../core/types';
+import type { FileNode } from '../../core/types';
 
 interface FlattenedNode {
   label: string;

@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { useEditorStore } from '../../../../stores/editor';
+import { useEditorStore } from '../../stores/editor';
 
 // Dynamic import for Monaco
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports

@@ -311,18 +311,18 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
         const isAbsolute = (payload.isAbsolute as boolean) ?? false;
 
         // Always notify editor store to refresh open tabs (for both project and absolute paths)
-        void import('./editor').then(({ useEditorStore }) => {
+        void import('../apps/CodeEditor/stores/editor').then(({ useEditorStore }) => {
           const editorStore = useEditorStore();
           void editorStore.handleExternalFileChanged(filePath, changeType, isAbsolute);
         });
 
         // Only refresh file tree and index for project files (when projectId matches active project)
         if (projectId && !isAbsolute) {
-          void import('./project').then(({ useProjectStore }) => {
+          void import('../apps/CodeEditor/stores/project').then(({ useProjectStore }) => {
             const projectStore = useProjectStore();
             if (projectStore.activeProjectId === projectId) {
               void projectStore.refreshFileTree();
-              void import('./indexing').then(({ useIndexingStore }) => {
+              void import('../apps/CodeEditor/stores/indexing').then(({ useIndexingStore }) => {
                 const indexingStore = useIndexingStore();
                 void indexingStore.incrementalIndex(projectId, filePath, changeType);
               });

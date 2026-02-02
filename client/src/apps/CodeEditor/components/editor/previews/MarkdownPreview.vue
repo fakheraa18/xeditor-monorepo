@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useMarkdown } from '../../../../../components/ai/AIPanel/composables/useMarkdown';
+import { useMarkdown } from '../../../components/ai/AIPanel/composables/useMarkdown';
 
 interface Props {
   content: string;

@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useSearchStore } from 'src/stores/search';
+import { useSearchStore } from '../../stores/search';
 
 const searchStore = useSearchStore();
 
@@ -66,4 +66,3 @@ function updateExclude(val: string | number | null) {
   border-radius: 4px;
 }
 </style>
-

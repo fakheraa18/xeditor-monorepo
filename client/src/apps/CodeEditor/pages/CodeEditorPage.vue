@@ -54,9 +54,9 @@ import { computed } from 'vue';
 import EditorTabs from '../components/editor/EditorTabs.vue';
 import MonacoEditor from '../components/editor/MonacoEditor.vue';
 import FilePreview from '../components/editor/FilePreview.vue';
-import { useEditorStore } from '../../../stores/editor';
-import { useProjectStore } from '../../../stores/project';
-import { getFileIcon } from '../../../utils/fileIcons';
+import { useEditorStore } from '../stores/editor';
+import { useProjectStore } from '../stores/project';
+import { getFileIcon } from '../utils/fileIcons';
 
 const editorStore = useEditorStore();
 const projectStore = useProjectStore();

@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="dialogVisible" persistent>
-    <q-card style="min-width: 600px; max-width: 800px; height: 600px;" class="column">
+    <q-card style="min-width: 600px; max-width: 800px; height: 600px" class="column">
       <q-card-section class="row items-center q-pb-none">
         <div class="text-h6">Select Project Folder</div>
         <q-space />
@@ -33,31 +33,13 @@
               </q-btn>
             </template>
           </q-input>
-          <q-btn
-            flat
-            dense
-            icon="home"
-            @click="goToHome"
-            :disable="isLoading"
-          >
+          <q-btn flat dense icon="home" @click="goToHome" :disable="isLoading">
             <q-tooltip>Go to home directory</q-tooltip>
           </q-btn>
-          <q-btn
-            flat
-            dense
-            icon="arrow_upward"
-            @click="goUp"
-            :disable="isLoading || !canGoUp"
-          >
+          <q-btn flat dense icon="arrow_upward" @click="goUp" :disable="isLoading || !canGoUp">
             <q-tooltip>Go to parent directory</q-tooltip>
           </q-btn>
-          <q-btn
-            flat
-            dense
-            icon="refresh"
-            @click="refreshCurrentDirectory"
-            :disable="isLoading"
-          >
+          <q-btn flat dense icon="refresh" @click="refreshCurrentDirectory" :disable="isLoading">
             <q-tooltip>Refresh</q-tooltip>
           </q-btn>
         </div>
@@ -86,7 +68,7 @@
       <q-separator />
 
       <!-- Directory listing -->
-      <q-card-section class="col q-pa-none" style="min-height: 0;">
+      <q-card-section class="col q-pa-none" style="min-height: 0">
         <q-scroll-area class="fit">
           <div v-if="isLoading" class="q-pa-md text-center">
             <q-spinner-dots size="40px" color="primary" />
@@ -347,7 +329,7 @@ watch(
       error.value = null;
       void loadHomeDirectory();
     }
-  }
+  },
 );
 
 onMounted(() => {

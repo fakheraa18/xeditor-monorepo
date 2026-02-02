@@ -3,15 +3,21 @@ import type { RouteRecordRaw } from 'vue-router';
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: () => import('pages/LauncherPage.vue'),
+    component: () => import('../apps/CodeEditor/pages/LauncherPage.vue'),
   },
   {
     path: '/code',
     component: () => import('../apps/CodeEditor/layouts/CodeEditorLayout.vue'),
     children: [
       { path: '', component: () => import('../apps/CodeEditor/pages/CodeEditorPage.vue') },
-      { path: 'settings/ai', component: () => import('pages/AISettingsPage.vue') },
-      { path: 'index-explorer', component: () => import('pages/IndexExplorerPage.vue') },
+      {
+        path: 'settings/ai',
+        component: () => import('../apps/CodeEditor/pages/AISettingsPage.vue'),
+      },
+      {
+        path: 'index-explorer',
+        component: () => import('../apps/CodeEditor/pages/IndexExplorerPage.vue'),
+      },
     ],
   },
   {
