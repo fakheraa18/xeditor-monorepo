@@ -394,6 +394,9 @@ class Job(BaseModel):
     generator_id: Optional[str] = None
     generator_config: Optional[Dict[str, Any]] = None
     
+    # Story generation spec (for story_generate jobs)
+    story_spec: Optional[Dict[str, Any]] = None
+    
     # VRAM requirement (for queue scheduling)
     vram_gb_required: float = 0.0
     

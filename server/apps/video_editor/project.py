@@ -457,6 +457,53 @@ class VideoProjectManager:
         asset_dir.mkdir(parents=True, exist_ok=True)
         return str(asset_dir / filename)
 
+    def put_project_state(
+        self,
+        project_id: str,
+        project_data: Dict[str, Any]
+    ) -> Optional[VideoProject]:
+        """
+        Replace the entire project state with client-provided data.
+        
+        Preserves root_path from the server-side open project (never trust client paths).
+        This is the main method for autosave functionality.
+        
+        Args:
+            project_id: ID of the project to update
+            project_data: Full project data from client
+            
+        Returns:
+            Updated VideoProject or None if project not open
+        """
+        existing = self._open_projects.get(project_id)
+        if not existing:
+            return None
+        
+        # Preserve critical server-side fields
+        preserved_root_path = existing.root_path
+        preserved_id = existing.id
+        
+        try:
+            # Validate and create new project from client data
+            new_project = VideoProject.model_validate(project_data)
+            
+            # Override with preserved values (never trust client for these)
+            new_project.id = preserved_id
+            new_project.root_path = preserved_root_path
+            new_project.update_timestamp()
+            
+            # Replace in open projects
+            self._open_projects[project_id] = new_project
+            
+            # Persist to disk
+            self._save_project_state(new_project)
+            
+            return new_project
+            
+        except Exception as e:
+            print(f"[VideoProjectManager] Error validating project state: {e}")
+            return None
+
 
 # Singleton instance
 _project_manager: Optional[VideoProjectManager] = None
@@ -666,3 +713,27 @@ async def handle_ve_update_timeline(payload: Dict[str, Any]) -> Dict[str, Any]:
     if project:
         return {"success": True, "project": project.model_dump()}
     return {"success": False, "error": "Project not found"}
+
+
+async def handle_ve_put_project_state(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    RPC handler for replacing entire project state (autosave).
+    
+    This is the primary endpoint for the client's debounced autosave.
+    It accepts the full project state and persists it to disk.
+    """
+    manager = get_video_project_manager()
+    
+    project_id = payload.get("projectId", "")
+    project_data = payload.get("project")
+    
+    if not project_id:
+        return {"success": False, "error": "Project ID is required"}
+    if not project_data:
+        return {"success": False, "error": "Project data is required"}
+    
+    project = manager.put_project_state(project_id, project_data)
+    
+    if project:
+        return {"success": True, "project": project.model_dump()}
+    return {"success": False, "error": "Project not found or validation failed"}

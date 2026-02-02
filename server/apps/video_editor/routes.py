@@ -26,11 +26,13 @@ from apps.video_editor.project import (
     handle_ve_update_library,
     handle_ve_update_story,
     handle_ve_update_timeline,
+    handle_ve_put_project_state,
 )
 from apps.video_editor.generators.base import (
     handle_ve_list_generators,
     handle_ve_get_generator_capabilities,
     handle_ve_find_compatible_generators,
+    get_generator_registry,
 )
 from apps.video_editor.jobs.queue import (
     handle_ve_start_job,
@@ -53,15 +55,86 @@ STREAM_MESSAGE_TYPES = {"ve_job_start", "ve_job_cancel", "ve_job_resume"}
 
 async def init_video_editor() -> None:
     """Initialize video editor on startup."""
+    print("[video_editor] Initializing video editor...")
+    
     # Register built-in generators
-    # TODO: Register default generators when implemented
-    pass
+    registry = get_generator_registry()
+    
+    # Import generators with error handling for missing dependencies
+    generators_to_register = []
+    
+    try:
+        from apps.video_editor.generators.impl.story_llm import StoryLLMGenerator
+        generators_to_register.append(StoryLLMGenerator)
+        print("[video_editor] Registered: StoryLLMGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping StoryLLMGenerator: {e}")
+    
+    try:
+        from apps.video_editor.generators.impl.tts_coqui_xtts import CoquiXTTSGenerator
+        generators_to_register.append(CoquiXTTSGenerator)
+        print("[video_editor] Registered: CoquiXTTSGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping CoquiXTTSGenerator: {e}")
+    
+    try:
+        from apps.video_editor.generators.impl.t2i_sdxl import SDXLT2IGenerator
+        generators_to_register.append(SDXLT2IGenerator)
+        print("[video_editor] Registered: SDXLT2IGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping SDXLT2IGenerator: {e}")
+    
+    try:
+        from apps.video_editor.generators.impl.i2v_slideshow import SlideshowI2VGenerator
+        generators_to_register.append(SlideshowI2VGenerator)
+        print("[video_editor] Registered: SlideshowI2VGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping SlideshowI2VGenerator: {e}")
+    
+    try:
+        from apps.video_editor.generators.impl.i2v_svd import SVDI2VGenerator
+        generators_to_register.append(SVDI2VGenerator)
+        print("[video_editor] Registered: SVDI2VGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping SVDI2VGenerator: {e}")
+    
+    try:
+        from apps.video_editor.generators.impl.t2v_wan import WanT2VGenerator
+        generators_to_register.append(WanT2VGenerator)
+        print("[video_editor] Registered: WanT2VGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping WanT2VGenerator: {e}")
+    
+    try:
+        from apps.video_editor.generators.impl.t2v_zeroscope import ZeroscopeT2VGenerator
+        generators_to_register.append(ZeroscopeT2VGenerator)
+        print("[video_editor] Registered: ZeroscopeT2VGenerator")
+    except ImportError as e:
+        print(f"[video_editor] Skipping ZeroscopeT2VGenerator: {e}")
+    
+    # Register all loaded generators
+    for gen_class in generators_to_register:
+        try:
+            registry.register(gen_class)
+        except Exception as e:
+            print(f"[video_editor] Error registering {gen_class.__name__}: {e}")
+    
+    print(f"[video_editor] Initialized with {len(generators_to_register)} generators")
 
 
 async def shutdown_video_editor() -> None:
     """Cleanup video editor on shutdown."""
+    print("[video_editor] Shutting down video editor...")
+    
+    # Shutdown job queue
     queue = get_job_queue()
     await queue.shutdown()
+    
+    # Unload all generators
+    registry = get_generator_registry()
+    await registry.unload_all()
+    
+    print("[video_editor] Shutdown complete")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,6 +347,9 @@ async def websocket_control_endpoint(websocket: WebSocket):
                 
                 elif msg_type == "ve_update_timeline":
                     response = await handle_ve_update_timeline(payload)
+                
+                elif msg_type == "ve_put_project_state":
+                    response = await handle_ve_put_project_state(payload)
                 
                 # ─────────────────────────────────────────────────────────
                 # Generator Operations

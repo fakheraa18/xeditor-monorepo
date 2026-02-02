@@ -3,10 +3,11 @@
  *
  * Manages video project state and communication with the local companion.
  * Handles project CRUD, asset management, story, and timeline.
+ * Implements debounced autosave for reliable persistence.
  */
 
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useVideoCompanionStore } from './videoCompanion';
 import type {
   VideoProject,
@@ -28,6 +29,10 @@ import {
   createDefaultTimeline,
 } from '../types';
 
+// Debounce delay for autosave (ms)
+// Set to 5 minutes to reduce server load while still providing regular saves
+const AUTOSAVE_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+
 export const useVideoProjectStore = defineStore('videoProject', () => {
   const companion = useVideoCompanionStore();
 
@@ -40,6 +45,13 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
   const isLoading = ref(false);
   const error = ref<string | null>(null);
   const isDirty = ref(false);
+
+  // Autosave state
+  const isSaving = ref(false);
+  const lastSaveError = ref<string | null>(null);
+  let autosaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  // Guard to prevent triggering autosave when applying server responses
+  let isApplyingServerState = false;
 
   // ─────────────────────────────────────────────────────────────────────
   // Computed
@@ -146,31 +158,120 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
   }
 
   /**
-   * Save the current project
+   * Save the current project state to the backend.
+   * Uses ve_put_project_state to send the full project state.
    */
   async function saveProject(): Promise<void> {
     if (!project.value) return;
 
-    isLoading.value = true;
-    error.value = null;
+    // Cancel any pending autosave
+    if (autosaveTimeoutId) {
+      clearTimeout(autosaveTimeoutId);
+      autosaveTimeoutId = null;
+    }
+
+    isSaving.value = true;
+    lastSaveError.value = null;
 
     try {
       const response = await sendControlMessage<{
         success: boolean;
+        project?: VideoProject;
         error?: string;
-      }>('ve_save_project', { projectId: project.value.id });
+      }>('ve_put_project_state', {
+        projectId: project.value.id,
+        project: project.value,
+      });
 
       if (!response.success) {
         throw new Error(response.error || 'Failed to save project');
       }
 
+      // Apply server response (with updated_at timestamp)
+      if (response.project) {
+        isApplyingServerState = true;
+        project.value = response.project;
+        isApplyingServerState = false;
+      }
+
       isDirty.value = false;
     } catch (e) {
-      error.value = (e as Error).message;
+      lastSaveError.value = (e as Error).message;
+      console.error('Failed to save project:', e);
       throw e;
     } finally {
-      isLoading.value = false;
+      isSaving.value = false;
     }
+  }
+
+  /**
+   * Schedule an autosave after debounce delay.
+   * Called automatically when project state changes.
+   */
+  function scheduleAutosave(): void {
+    if (!project.value || isApplyingServerState) return;
+
+    // Mark as dirty
+    isDirty.value = true;
+
+    // Cancel existing timeout
+    if (autosaveTimeoutId) {
+      clearTimeout(autosaveTimeoutId);
+    }
+
+    // Schedule new autosave
+    autosaveTimeoutId = setTimeout(() => {
+      autosaveTimeoutId = null;
+      void performAutosave();
+    }, AUTOSAVE_DELAY_MS);
+  }
+
+  /**
+   * Perform the actual autosave.
+   * Silent errors - just logs and sets lastSaveError.
+   */
+  async function performAutosave(): Promise<void> {
+    if (!project.value || isSaving.value) return;
+
+    isSaving.value = true;
+    lastSaveError.value = null;
+
+    try {
+      const response = await sendControlMessage<{
+        success: boolean;
+        project?: VideoProject;
+        error?: string;
+      }>('ve_put_project_state', {
+        projectId: project.value.id,
+        project: project.value,
+      });
+
+      if (response.success) {
+        // Apply server response
+        if (response.project) {
+          isApplyingServerState = true;
+          project.value = response.project;
+          isApplyingServerState = false;
+        }
+        isDirty.value = false;
+      } else {
+        lastSaveError.value = response.error || 'Autosave failed';
+        console.error('Autosave failed:', response.error);
+      }
+    } catch (e) {
+      lastSaveError.value = (e as Error).message;
+      console.error('Autosave error:', e);
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
+  /**
+   * Mark the project as dirty and trigger autosave.
+   * Call this after any local mutation.
+   */
+  function markDirty(): void {
+    scheduleAutosave();
   }
 
   /**
@@ -280,7 +381,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     };
 
     project.value.library.characters.push(newCharacter);
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function updateCharacter(id: string, updates: Partial<CharacterAsset>): void {
@@ -296,7 +397,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
         ...updates,
         updated_at: Date.now() / 1000,
       };
-      isDirty.value = true;
+      scheduleAutosave();
     }
   }
 
@@ -304,7 +405,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     if (!project.value) return;
 
     project.value.library.characters = project.value.library.characters.filter((c) => c.id !== id);
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function addProp(prop: Omit<PropAsset, 'id' | 'created_at' | 'updated_at'>): void {
@@ -319,7 +420,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     };
 
     project.value.library.props.push(newProp);
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function addVoice(voice: Omit<VoiceAsset, 'id' | 'created_at' | 'updated_at'>): void {
@@ -334,7 +435,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     };
 
     project.value.library.voices.push(newVoice);
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -368,7 +469,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
 
     project.value.story.scenes.push(newScene);
     project.value.story.updated_at = Date.now() / 1000;
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function updateScene(id: string, updates: Partial<StoryScene>): void {
@@ -384,7 +485,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
         ...updates,
       };
       project.value.story.updated_at = Date.now() / 1000;
-      isDirty.value = true;
+      scheduleAutosave();
     }
   }
 
@@ -393,7 +494,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
 
     project.value.story.scenes = project.value.story.scenes.filter((s) => s.id !== id);
     project.value.story.updated_at = Date.now() / 1000;
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function reorderScenes(sceneIds: string[]): void {
@@ -412,7 +513,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
       .filter((s): s is StoryScene => s !== null);
 
     project.value.story.updated_at = Date.now() / 1000;
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -446,7 +547,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
 
     project.value.timeline.clips.push(newClip);
     recalculateTimelineDuration();
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function updateClip(id: string, updates: Partial<TimelineClip>): void {
@@ -462,7 +563,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
         ...updates,
       };
       recalculateTimelineDuration();
-      isDirty.value = true;
+      scheduleAutosave();
     }
   }
 
@@ -471,7 +572,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
 
     project.value.timeline.clips = project.value.timeline.clips.filter((c) => c.id !== id);
     recalculateTimelineDuration();
-    isDirty.value = true;
+    scheduleAutosave();
   }
 
   function recalculateTimelineDuration(): void {
@@ -488,6 +589,27 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // Deep Watcher for Autosave
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Watch for any deep changes to the project and trigger autosave.
+  // This catches direct mutations (e.g., v-model on story.title).
+  watch(
+    project,
+    () => {
+      // Don't trigger autosave when:
+      // - No project open
+      // - Applying server state (after save response)
+      // - Already saving
+      if (!project.value || isApplyingServerState || isSaving.value) {
+        return;
+      }
+      scheduleAutosave();
+    },
+    { deep: true },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────
   // Initialize
   // ─────────────────────────────────────────────────────────────────────
 
@@ -501,6 +623,8 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     isLoading,
     error,
     isDirty,
+    isSaving,
+    lastSaveError,
 
     // Computed
     isOpen,
@@ -542,5 +666,8 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     addClip,
     updateClip,
     removeClip,
+
+    // Autosave
+    markDirty,
   };
 });

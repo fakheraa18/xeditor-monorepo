@@ -213,8 +213,8 @@ const characterOptions = computed(() => [
 ]);
 
 function markDirty(): void {
-  // The store's computed properties will reflect changes automatically
-  // This is just for triggering saves
+  // Trigger autosave via the store
+  projectStore.markDirty();
 }
 
 function addScene(): void {
@@ -278,7 +278,11 @@ function removeCharacterFromScene(scene: StoryScene, charId: string): void {
 
 async function generateWithAI(): Promise<void> {
   try {
-    await jobsStore.generateStory();
+    await jobsStore.generateStory({
+      topic: story.value.title || 'A compelling video story',
+      ...(story.value.genre && { genre: story.value.genre }),
+      numScenes: 5,
+    });
   } catch (e) {
     console.error('Failed to start story generation:', e);
   }

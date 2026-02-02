@@ -32,3 +32,18 @@ build = [
 gpu = [
     "onnxruntime-gpu",
 ]
+# Video Editor generation dependencies
+video_editor = [
+    # TTS
+    "TTS>=0.22.0",
+    # Image/Video generation
+    "diffusers>=0.29.0",
+    "transformers>=4.40.0",
+    "accelerate>=0.30.0",
+    "torch>=2.3.0",
+    # Video assembly
+    "moviepy>=2.0.0",
+    # Image processing
+    "Pillow>=10.0.0",
+    "scipy>=1.12.0",
+]

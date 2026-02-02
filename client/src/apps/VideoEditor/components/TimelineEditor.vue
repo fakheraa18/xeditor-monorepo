@@ -89,8 +89,48 @@
           >{{ formatTime(currentTime) }} / {{ formatTime(timeline.total_duration) }}</span
         >
         <q-space />
-        <q-btn flat icon="add" label="Add Clip from Scene" @click="addClipFromScene" />
-        <q-btn flat icon="auto_awesome" label="Generate All" color="primary" @click="generateAll" />
+        <q-btn flat icon="add" label="Add Clips from Scenes" @click="addClipFromScene" />
+        <q-btn-dropdown flat icon="auto_awesome" label="Generate" color="primary">
+          <q-list>
+            <q-item clickable v-close-popup @click="generateAll">
+              <q-item-section avatar>
+                <q-icon name="record_voice_over" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Generate Audio (TTS)</q-item-label>
+                <q-item-label caption>Create speech from narration</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item clickable v-close-popup @click="generateImages">
+              <q-item-section avatar>
+                <q-icon name="image" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Generate Images</q-item-label>
+                <q-item-label caption>Create visuals from prompts</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item clickable v-close-popup @click="generateVideos">
+              <q-item-section avatar>
+                <q-icon name="movie" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Generate Videos</q-item-label>
+                <q-item-label caption>Create video clips from images</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-separator />
+            <q-item clickable v-close-popup @click="exportVideo">
+              <q-item-section avatar>
+                <q-icon name="file_download" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Export Final Video</q-item-label>
+                <q-item-label caption>Merge all clips to MP4</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
       </div>
     </div>
   </div>
@@ -216,10 +256,48 @@ async function generateAll(): Promise<void> {
   }
 
   try {
-    // First generate audio, then video
-    await jobsStore.generateAudio(clipIds);
+    // Start audio generation first (images and video can follow)
+    await jobsStore.generateAudio({ clipIds });
+    // Note: Subsequent steps (image, video) can be triggered via UI
+    // after audio completes, or wired into a full pipeline
   } catch (e) {
     console.error('Failed to start generation:', e);
+  }
+}
+
+async function generateImages(): Promise<void> {
+  const clipIds = timeline.value.clips.map((c) => c.id);
+  if (clipIds.length === 0) {
+    alert('No clips on timeline');
+    return;
+  }
+
+  try {
+    await jobsStore.generateImages({ clipIds });
+  } catch (e) {
+    console.error('Failed to start image generation:', e);
+  }
+}
+
+async function generateVideos(): Promise<void> {
+  const clipIds = timeline.value.clips.map((c) => c.id);
+  if (clipIds.length === 0) {
+    alert('No clips on timeline');
+    return;
+  }
+
+  try {
+    await jobsStore.generateVideo({ clipIds });
+  } catch (e) {
+    console.error('Failed to start video generation:', e);
+  }
+}
+
+async function exportVideo(): Promise<void> {
+  try {
+    await jobsStore.exportProject();
+  } catch (e) {
+    console.error('Failed to start export:', e);
   }
 }
 </script>

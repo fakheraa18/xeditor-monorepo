@@ -40,14 +40,38 @@
 
         <q-space />
 
+        <!-- Save status indicator -->
+        <q-spinner-dots v-if="projectStore.isSaving" color="white" size="20px" class="q-mr-sm" />
+        <q-icon
+          v-else-if="projectStore.lastSaveError"
+          name="error"
+          color="negative"
+          size="20px"
+          class="q-mr-sm"
+        >
+          <q-tooltip>Save error: {{ projectStore.lastSaveError }}</q-tooltip>
+        </q-icon>
+        <q-icon
+          v-else-if="!projectStore.isDirty && projectStore.isOpen"
+          name="cloud_done"
+          color="positive"
+          size="20px"
+          class="q-mr-sm"
+        >
+          <q-tooltip>All changes saved</q-tooltip>
+        </q-icon>
+
         <q-btn
           v-if="projectStore.isDirty"
           flat
           icon="save"
-          label="Save"
+          label="Save Now"
           text-color="warning"
+          :loading="projectStore.isSaving"
           @click="saveProject"
-        />
+        >
+          <q-tooltip>Save all pending changes</q-tooltip>
+        </q-btn>
         <q-btn
           flat
           round

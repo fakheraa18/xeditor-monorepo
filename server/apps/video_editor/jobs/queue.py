@@ -9,8 +9,11 @@ Manages generation jobs with:
 """
 
 import asyncio
+import os
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 import uuid
 
@@ -21,12 +24,18 @@ from apps.video_editor.models import (
     JobProgressEvent,
     TimelineClip,
     RegenerationMode,
+    GeneratedAsset,
+    GeneratorConfig,
 )
 from apps.video_editor.generators.base import (
     BaseGenerator,
     GeneratorRegistry,
     get_generator_registry,
     ProgressCallback,
+    TTSGenerator,
+    VideoGenerator,
+    ImageGenerator,
+    LLMGenerator,
 )
 
 
@@ -375,21 +384,96 @@ class JobQueue:
         cancel_event: Optional[asyncio.Event]
     ) -> None:
         """Run story generation job (LLM-based)."""
-        # This will be implemented when we add the LLM bridge generator
-        # For now, just simulate progress
-        for i in range(10):
-            if cancel_event and cancel_event.is_set():
-                raise asyncio.CancelledError()
+        from apps.video_editor.project import get_video_project_manager
+        
+        job = queued.job
+        manager = get_video_project_manager()
+        project = manager.get_project(queued.project_id)
+        
+        if not project:
+            raise RuntimeError("Project not found")
+        
+        # Get the LLM generator
+        registry = get_generator_registry()
+        generator_id = job.generator_id or "story_llm"
+        
+        gen_instance = registry.get_instance(generator_id)
+        if not gen_instance:
+            # Try to create instance
+            gen_class = registry.get(generator_id)
+            if gen_class:
+                config = GeneratorConfig(custom=job.generator_config or {})
+                gen_instance = gen_class(config)
+                await gen_instance.load()
+            else:
+                raise RuntimeError(f"Generator not found: {generator_id}")
+        
+        # Create progress callback
+        progress_cb = self._create_progress_callback(queued, "generating_story", 0.0, 1.0)
+        
+        if cancel_event and cancel_event.is_set():
+            raise asyncio.CancelledError()
+        
+        # Get the topic/prompt from job spec
+        topic = job.story_spec.get("topic", "") if job.story_spec else ""
+        genre = job.story_spec.get("genre") if job.story_spec else None
+        num_scenes = job.story_spec.get("num_scenes", 5) if job.story_spec else 5
+        
+        if hasattr(gen_instance, "generate_story"):
+            # Use high-level story generation
+            result = await gen_instance.generate_story(
+                topic=topic,
+                genre=genre,
+                num_scenes=num_scenes,
+                progress_callback=progress_cb,
+            )
+        else:
+            # Fallback to basic generate
+            result = await gen_instance.generate(
+                prompt=topic,
+                progress_callback=progress_cb,
+            )
+        
+        if not result.get("success", False) and not getattr(result, "success", False):
+            error = result.get("error") or getattr(result, "error", "Unknown error")
+            raise RuntimeError(f"Story generation failed: {error}")
+        
+        # Extract story from result
+        story_data = result.get("story") if isinstance(result, dict) else None
+        if story_data:
+            # Update project story with generated content
+            from apps.video_editor.models import Story, StoryScene
             
-            await self._broadcast_progress(queued, JobProgressEvent(
-                job_id=queued.job.id,
-                seq=self._next_seq(queued),
-                stage="generating_story",
-                stage_progress=(i + 1) / 10,
-                overall_progress=(i + 1) / 10,
-                message=f"Generating story... {(i + 1) * 10}%",
-            ))
-            await asyncio.sleep(0.5)
+            scenes = []
+            for idx, scene_data in enumerate(story_data.get("scenes", [])):
+                scenes.append(StoryScene(
+                    id=str(uuid.uuid4()),
+                    title=scene_data.get("title", f"Scene {idx + 1}"),
+                    order=idx,
+                    narration=scene_data.get("narration", ""),
+                    visual_prompt=scene_data.get("visual_prompt", ""),
+                    camera_notes=scene_data.get("camera_notes", ""),
+                    duration_estimate=scene_data.get("duration_estimate", 5.0),
+                ))
+            
+            new_story = Story(
+                title=story_data.get("title", project.story.title),
+                genre=story_data.get("genre", project.story.genre),
+                synopsis=story_data.get("synopsis", ""),
+                scenes=scenes,
+                updated_at=datetime.now().timestamp(),
+            )
+            
+            manager.update_story(queued.project_id, new_story)
+        
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="completed",
+            stage_progress=1.0,
+            overall_progress=1.0,
+            message="Story generation complete",
+        ))
 
     async def _run_tts_job(
         self,
@@ -397,23 +481,124 @@ class JobQueue:
         cancel_event: Optional[asyncio.Event]
     ) -> None:
         """Run TTS generation job."""
-        # Placeholder - will be implemented with TTS generator
-        job = queued.job
-        total_clips = len(job.clip_ids) or 1
+        from apps.video_editor.project import get_video_project_manager
         
-        for i in range(total_clips):
+        job = queued.job
+        manager = get_video_project_manager()
+        project = manager.get_project(queued.project_id)
+        
+        if not project:
+            raise RuntimeError("Project not found")
+        
+        # Get TTS generator
+        registry = get_generator_registry()
+        generator_id = job.generator_id or "tts_coqui_xtts"
+        
+        gen_instance = registry.get_instance(generator_id)
+        if not gen_instance:
+            gen_class = registry.get(generator_id)
+            if gen_class:
+                config = GeneratorConfig(custom=job.generator_config or {})
+                gen_instance = gen_class(config)
+                await gen_instance.load()
+            else:
+                raise RuntimeError(f"TTS generator not found: {generator_id}")
+        
+        # Get clips to process
+        clips_to_process = []
+        for clip in project.timeline.clips:
+            if job.clip_ids and clip.id not in job.clip_ids:
+                continue
+            # Only process clips with narration
+            scene = next((s for s in project.story.scenes if s.id == clip.scene_id), None)
+            if scene and scene.narration:
+                clips_to_process.append((clip, scene))
+        
+        if not clips_to_process:
+            await self._broadcast_progress(queued, JobProgressEvent(
+                job_id=job.id,
+                seq=self._next_seq(queued),
+                stage="skipped",
+                stage_progress=1.0,
+                overall_progress=1.0,
+                message="No clips with narration to process",
+            ))
+            return
+        
+        total_clips = len(clips_to_process)
+        
+        # Get project asset directory
+        assets_dir = Path(project.root_path) / "xeditor.video" / "assets" / "audio"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        
+        for i, (clip, scene) in enumerate(clips_to_process):
             if cancel_event and cancel_event.is_set():
                 raise asyncio.CancelledError()
+            
+            # Progress callback for this clip
+            def create_clip_callback(clip_idx: int):
+                async def cb(event: JobProgressEvent) -> None:
+                    event.stage = f"generating_audio_{clip_idx + 1}"
+                    event.overall_progress = (clip_idx + event.stage_progress) / total_clips
+                    await self._broadcast_progress(queued, event)
+                return cb
+            
+            output_path = str(assets_dir / f"{clip.id}.wav")
+            
+            # Get voice sample if available
+            voice_sample_path = None
+            if clip.voice_id:
+                voice_asset = next((v for v in project.library.voices if v.id == clip.voice_id), None)
+                if voice_asset and voice_asset.sample_path:
+                    voice_sample_path = voice_asset.sample_path
+            
+            result = await gen_instance.generate(
+                text=scene.narration,
+                output_path=output_path,
+                voice_sample_path=voice_sample_path,
+                language=project.settings.language or "en",
+                progress_callback=create_clip_callback(i),
+            )
+            
+            if result.success:
+                # Update clip with generated audio info
+                clip.audio_artifact_path = output_path
+                clip.duration = result.duration_seconds if result.duration_seconds else clip.duration
+                clip.audio_generated_at = datetime.now().timestamp()
+                
+                # Add to generated assets
+                gen_asset = GeneratedAsset(
+                    id=str(uuid.uuid4()),
+                    generator_id=generator_id,
+                    artifact_type="audio",
+                    artifact_path=output_path,
+                    created_at=datetime.now().timestamp(),
+                    metadata={"text": scene.narration, "duration": result.duration_seconds},
+                )
+                project.generated_assets.append(gen_asset)
+            else:
+                print(f"[TTS] Failed to generate audio for clip {clip.id}: {result.error}")
             
             await self._broadcast_progress(queued, JobProgressEvent(
                 job_id=job.id,
                 seq=self._next_seq(queued),
                 stage="generating_audio",
-                stage_progress=(i + 1) / total_clips,
+                stage_progress=1.0,
                 overall_progress=(i + 1) / total_clips,
-                message=f"Generating audio {i + 1}/{total_clips}",
+                message=f"Generated audio {i + 1}/{total_clips}",
             ))
-            await asyncio.sleep(1.0)
+        
+        # Save updated project
+        manager._save_project_state(project)
+        
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="completed",
+            stage_progress=1.0,
+            overall_progress=1.0,
+            message="TTS generation complete",
+        ))
 
     async def _run_image_job(
         self,
@@ -421,23 +606,129 @@ class JobQueue:
         cancel_event: Optional[asyncio.Event]
     ) -> None:
         """Run image generation job."""
-        # Placeholder - will be implemented with T2I generator
-        job = queued.job
-        total_clips = len(job.clip_ids) or 1
+        from apps.video_editor.project import get_video_project_manager
         
-        for i in range(total_clips):
+        job = queued.job
+        manager = get_video_project_manager()
+        project = manager.get_project(queued.project_id)
+        
+        if not project:
+            raise RuntimeError("Project not found")
+        
+        # Get T2I generator
+        registry = get_generator_registry()
+        generator_id = job.generator_id or "t2i_sdxl"
+        
+        gen_instance = registry.get_instance(generator_id)
+        if not gen_instance:
+            gen_class = registry.get(generator_id)
+            if gen_class:
+                config = GeneratorConfig(custom=job.generator_config or {})
+                gen_instance = gen_class(config)
+                await gen_instance.load()
+            else:
+                raise RuntimeError(f"T2I generator not found: {generator_id}")
+        
+        # Get clips to process
+        clips_to_process = []
+        for clip in project.timeline.clips:
+            if job.clip_ids and clip.id not in job.clip_ids:
+                continue
+            # Get visual prompt from scene
+            scene = next((s for s in project.story.scenes if s.id == clip.scene_id), None)
+            if scene and scene.visual_prompt:
+                clips_to_process.append((clip, scene))
+        
+        if not clips_to_process:
+            await self._broadcast_progress(queued, JobProgressEvent(
+                job_id=job.id,
+                seq=self._next_seq(queued),
+                stage="skipped",
+                stage_progress=1.0,
+                overall_progress=1.0,
+                message="No clips with visual prompts to process",
+            ))
+            return
+        
+        total_clips = len(clips_to_process)
+        
+        # Get project asset directory
+        assets_dir = Path(project.root_path) / "xeditor.video" / "assets" / "images"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Resolution settings
+        width = project.settings.resolution_width or 1024
+        height = project.settings.resolution_height or 576
+        
+        for i, (clip, scene) in enumerate(clips_to_process):
             if cancel_event and cancel_event.is_set():
                 raise asyncio.CancelledError()
+            
+            def create_clip_callback(clip_idx: int):
+                async def cb(event: JobProgressEvent) -> None:
+                    event.stage = f"generating_image_{clip_idx + 1}"
+                    event.overall_progress = (clip_idx + event.stage_progress) / total_clips
+                    await self._broadcast_progress(queued, event)
+                return cb
+            
+            output_path = str(assets_dir / f"{clip.id}.png")
+            
+            # Build prompt with style info
+            prompt = scene.visual_prompt
+            if project.settings.visual_style:
+                prompt = f"{prompt}, {project.settings.visual_style}"
+            
+            result = await gen_instance.generate(
+                prompt=prompt,
+                output_path=output_path,
+                width=width,
+                height=height,
+                progress_callback=create_clip_callback(i),
+            )
+            
+            if result.success:
+                # Update clip with generated image info
+                clip.image_artifact_path = output_path
+                clip.image_generated_at = datetime.now().timestamp()
+                
+                # Add to generated assets
+                gen_asset = GeneratedAsset(
+                    id=str(uuid.uuid4()),
+                    generator_id=generator_id,
+                    artifact_type="image",
+                    artifact_path=output_path,
+                    created_at=datetime.now().timestamp(),
+                    metadata={
+                        "prompt": prompt,
+                        "width": width,
+                        "height": height,
+                        "seed": result.seed,
+                    },
+                )
+                project.generated_assets.append(gen_asset)
+            else:
+                print(f"[T2I] Failed to generate image for clip {clip.id}: {result.error}")
             
             await self._broadcast_progress(queued, JobProgressEvent(
                 job_id=job.id,
                 seq=self._next_seq(queued),
                 stage="generating_image",
-                stage_progress=(i + 1) / total_clips,
+                stage_progress=1.0,
                 overall_progress=(i + 1) / total_clips,
-                message=f"Generating image {i + 1}/{total_clips}",
+                message=f"Generated image {i + 1}/{total_clips}",
             ))
-            await asyncio.sleep(2.0)
+        
+        # Save updated project
+        manager._save_project_state(project)
+        
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="completed",
+            stage_progress=1.0,
+            overall_progress=1.0,
+            message="Image generation complete",
+        ))
 
     async def _run_video_job(
         self,
@@ -445,34 +736,146 @@ class JobQueue:
         cancel_event: Optional[asyncio.Event]
     ) -> None:
         """Run video generation job."""
-        # Placeholder - will be implemented with video generator
-        job = queued.job
-        total_clips = len(job.clip_ids) or 1
+        from apps.video_editor.project import get_video_project_manager
         
-        for i in range(total_clips):
+        job = queued.job
+        manager = get_video_project_manager()
+        project = manager.get_project(queued.project_id)
+        
+        if not project:
+            raise RuntimeError("Project not found")
+        
+        # Get video generator
+        registry = get_generator_registry()
+        # Default to slideshow for V1 - it's fast and always works
+        generator_id = job.generator_id or "i2v_slideshow"
+        
+        gen_instance = registry.get_instance(generator_id)
+        if not gen_instance:
+            gen_class = registry.get(generator_id)
+            if gen_class:
+                config = GeneratorConfig(custom=job.generator_config or {})
+                gen_instance = gen_class(config)
+                await gen_instance.load()
+            else:
+                raise RuntimeError(f"Video generator not found: {generator_id}")
+        
+        # Get clips to process
+        clips_to_process = []
+        for clip in project.timeline.clips:
+            if job.clip_ids and clip.id not in job.clip_ids:
+                continue
+            # Need either an image or a visual prompt
+            scene = next((s for s in project.story.scenes if s.id == clip.scene_id), None)
+            has_image = bool(clip.image_artifact_path) and os.path.exists(clip.image_artifact_path or "")
+            has_prompt = scene and scene.visual_prompt
+            if has_image or has_prompt:
+                clips_to_process.append((clip, scene))
+        
+        if not clips_to_process:
+            await self._broadcast_progress(queued, JobProgressEvent(
+                job_id=job.id,
+                seq=self._next_seq(queued),
+                stage="skipped",
+                stage_progress=1.0,
+                overall_progress=1.0,
+                message="No clips with images to process",
+            ))
+            return
+        
+        total_clips = len(clips_to_process)
+        
+        # Get project asset directory
+        assets_dir = Path(project.root_path) / "xeditor.video" / "assets" / "video"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Video settings
+        width = project.settings.resolution_width or 1024
+        height = project.settings.resolution_height or 576
+        fps = project.settings.fps or 30
+        
+        for i, (clip, scene) in enumerate(clips_to_process):
             if cancel_event and cancel_event.is_set():
                 raise asyncio.CancelledError()
             
-            # Simulate frame-by-frame progress
-            total_frames = 120
-            for frame in range(total_frames):
-                if cancel_event and cancel_event.is_set():
-                    raise asyncio.CancelledError()
+            def create_clip_callback(clip_idx: int):
+                async def cb(event: JobProgressEvent) -> None:
+                    event.stage = f"generating_video_{clip_idx + 1}"
+                    event.overall_progress = (clip_idx + event.stage_progress) / total_clips
+                    await self._broadcast_progress(queued, event)
+                return cb
+            
+            output_path = str(assets_dir / f"{clip.id}.mp4")
+            
+            # Determine duration - use audio duration if available
+            duration = clip.duration or 4.0
+            
+            # Build generation params
+            gen_kwargs = {
+                "output_path": output_path,
+                "first_frame_path": clip.image_artifact_path,
+                "duration_seconds": duration,
+                "fps": fps,
+                "width": width,
+                "height": height,
+                "progress_callback": create_clip_callback(i),
+            }
+            
+            # Add prompts for T2V/I2V generators that use them
+            if scene:
+                gen_kwargs["prompt"] = scene.visual_prompt
+                gen_kwargs["motion_prompt"] = scene.camera_notes
+            
+            result = await gen_instance.generate(**gen_kwargs)
+            
+            if result.success:
+                # Update clip with generated video info
+                clip.video_artifact_path = output_path
+                clip.video_generated_at = datetime.now().timestamp()
+                clip.status = "generated"
                 
-                clip_progress = (frame + 1) / total_frames
-                overall = (i + clip_progress) / total_clips
+                # Update duration if generator reports it
+                if result.duration_seconds:
+                    clip.duration = result.duration_seconds
                 
-                await self._broadcast_progress(queued, JobProgressEvent(
-                    job_id=job.id,
-                    seq=self._next_seq(queued),
-                    stage="generating_video",
-                    stage_progress=clip_progress,
-                    overall_progress=overall,
-                    current_frame=frame + 1,
-                    total_frames=total_frames,
-                    message=f"Generating video {i + 1}/{total_clips} - frame {frame + 1}/{total_frames}",
-                ))
-                await asyncio.sleep(0.05)
+                # Add to generated assets
+                gen_asset = GeneratedAsset(
+                    id=str(uuid.uuid4()),
+                    generator_id=generator_id,
+                    artifact_type="video",
+                    artifact_path=output_path,
+                    created_at=datetime.now().timestamp(),
+                    metadata={
+                        "duration": result.duration_seconds,
+                        "fps": result.fps,
+                        "width": result.width,
+                        "height": result.height,
+                    },
+                )
+                project.generated_assets.append(gen_asset)
+            else:
+                print(f"[Video] Failed to generate video for clip {clip.id}: {result.error}")
+            
+            await self._broadcast_progress(queued, JobProgressEvent(
+                job_id=job.id,
+                seq=self._next_seq(queued),
+                stage="generating_video",
+                stage_progress=1.0,
+                overall_progress=(i + 1) / total_clips,
+                message=f"Generated video {i + 1}/{total_clips}",
+            ))
+        
+        # Save updated project
+        manager._save_project_state(project)
+        
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="completed",
+            stage_progress=1.0,
+            overall_progress=1.0,
+            message="Video generation complete",
+        ))
 
     async def _run_music_job(
         self,
@@ -500,23 +903,236 @@ class JobQueue:
         queued: QueuedJob,
         cancel_event: Optional[asyncio.Event]
     ) -> None:
-        """Run final merge/export job."""
-        # Placeholder - will be implemented with FFmpeg
-        stages = ["preparing", "merging_video", "merging_audio", "encoding", "finalizing"]
+        """Run final merge/export job using FFmpeg."""
+        from apps.video_editor.project import get_video_project_manager
         
-        for i, stage in enumerate(stages):
-            if cancel_event and cancel_event.is_set():
-                raise asyncio.CancelledError()
+        job = queued.job
+        manager = get_video_project_manager()
+        project = manager.get_project(queued.project_id)
+        
+        if not project:
+            raise RuntimeError("Project not found")
+        
+        # Get output directory
+        renders_dir = Path(project.root_path) / "xeditor.video" / "renders"
+        renders_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = str(renders_dir / f"{project.name}_{timestamp}.mp4")
+        
+        # Get clips sorted by order
+        clips = sorted(project.timeline.clips, key=lambda c: c.start_time)
+        
+        if not clips:
+            raise RuntimeError("No clips to merge")
+        
+        # Stage 1: Prepare clip list
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="preparing",
+            stage_progress=0.5,
+            overall_progress=0.1,
+            message="Preparing clips for merge...",
+        ))
+        
+        if cancel_event and cancel_event.is_set():
+            raise asyncio.CancelledError()
+        
+        # Collect valid clips
+        video_inputs = []
+        audio_inputs = []
+        
+        for clip in clips:
+            if clip.video_artifact_path and os.path.exists(clip.video_artifact_path):
+                video_inputs.append({
+                    "path": clip.video_artifact_path,
+                    "duration": clip.duration,
+                })
+            if clip.audio_artifact_path and os.path.exists(clip.audio_artifact_path):
+                audio_inputs.append({
+                    "path": clip.audio_artifact_path,
+                    "start_time": clip.start_time,
+                })
+        
+        if not video_inputs:
+            raise RuntimeError("No video clips to merge")
+        
+        # Stage 2: Create concat file
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="creating_concat",
+            stage_progress=0.5,
+            overall_progress=0.2,
+            message="Creating concat list...",
+        ))
+        
+        concat_file = renders_dir / f"concat_{timestamp}.txt"
+        with open(concat_file, "w") as f:
+            for video in video_inputs:
+                # Escape quotes in path
+                escaped_path = video["path"].replace("'", "'\\''")
+                f.write(f"file '{escaped_path}'\n")
+        
+        if cancel_event and cancel_event.is_set():
+            raise asyncio.CancelledError()
+        
+        # Stage 3: Merge videos
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="merging_video",
+            stage_progress=0.5,
+            overall_progress=0.4,
+            message="Merging video clips...",
+        ))
+        
+        temp_video = str(renders_dir / f"temp_video_{timestamp}.mp4")
+        
+        try:
+            # Concat videos using FFmpeg
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_file),
+                "-c", "copy",
+                temp_video
+            ]
             
-            await self._broadcast_progress(queued, JobProgressEvent(
-                job_id=queued.job.id,
-                seq=self._next_seq(queued),
-                stage=stage,
-                stage_progress=1.0,
-                overall_progress=(i + 1) / len(stages),
-                message=f"Final export: {stage}",
-            ))
-            await asyncio.sleep(1.0)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            
+            if result.returncode != 0:
+                print(f"[Merge] FFmpeg concat error: {result.stderr}")
+                # Try with re-encoding if copy fails
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(concat_file),
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "23",
+                    temp_video
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                if result.returncode != 0:
+                    raise RuntimeError(f"FFmpeg concat failed: {result.stderr}")
+        
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("FFmpeg concat timed out")
+        
+        if cancel_event and cancel_event.is_set():
+            raise asyncio.CancelledError()
+        
+        # Stage 4: Add audio if available
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="merging_audio",
+            stage_progress=0.5,
+            overall_progress=0.6,
+            message="Adding audio tracks...",
+        ))
+        
+        final_output = output_path
+        
+        if audio_inputs:
+            # Create complex filter for multiple audio streams
+            audio_filter_inputs = []
+            filter_parts = []
+            
+            for idx, audio in enumerate(audio_inputs):
+                audio_filter_inputs.extend(["-i", audio["path"]])
+                # adelay for positioning audio
+                delay_ms = int(audio.get("start_time", 0) * 1000)
+                filter_parts.append(f"[{idx + 1}:a]adelay={delay_ms}|{delay_ms}[a{idx}]")
+            
+            # Mix all audio streams
+            audio_labels = "".join(f"[a{i}]" for i in range(len(audio_inputs)))
+            filter_parts.append(f"{audio_labels}amix=inputs={len(audio_inputs)}:duration=longest[aout]")
+            
+            filter_complex = ";".join(filter_parts)
+            
+            try:
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", temp_video,
+                    *audio_filter_inputs,
+                    "-filter_complex", filter_complex,
+                    "-map", "0:v",
+                    "-map", "[aout]",
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    final_output
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                
+                if result.returncode != 0:
+                    print(f"[Merge] Audio merge warning: {result.stderr}")
+                    # Fall back to video only
+                    os.rename(temp_video, final_output)
+                else:
+                    # Clean up temp video
+                    os.remove(temp_video)
+                    
+            except subprocess.TimeoutExpired:
+                os.rename(temp_video, final_output)
+        else:
+            # No audio, just use the merged video
+            os.rename(temp_video, final_output)
+        
+        # Clean up concat file
+        try:
+            os.remove(concat_file)
+        except OSError:
+            pass
+        
+        if cancel_event and cancel_event.is_set():
+            raise asyncio.CancelledError()
+        
+        # Stage 5: Finalize
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="finalizing",
+            stage_progress=1.0,
+            overall_progress=0.9,
+            message="Finalizing export...",
+        ))
+        
+        # Update project with render info
+        gen_asset = GeneratedAsset(
+            id=str(uuid.uuid4()),
+            generator_id="ffmpeg_merge",
+            artifact_type="render",
+            artifact_path=final_output,
+            created_at=datetime.now().timestamp(),
+            metadata={
+                "num_clips": len(video_inputs),
+                "has_audio": len(audio_inputs) > 0,
+            },
+        )
+        project.generated_assets.append(gen_asset)
+        manager._save_project_state(project)
+        
+        await self._broadcast_progress(queued, JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="completed",
+            stage_progress=1.0,
+            overall_progress=1.0,
+            message=f"Export complete: {os.path.basename(final_output)}",
+            artifact_path=final_output,
+        ))
 
     async def shutdown(self) -> None:
         """Shutdown the job queue gracefully."""
@@ -563,6 +1179,7 @@ async def handle_ve_start_job(payload: Dict[str, Any], broadcast: Optional[Broad
     generator_id = payload.get("generatorId")
     generator_config = payload.get("generatorConfig")
     regen_mode_str = payload.get("regenerationMode")
+    story_spec = payload.get("storySpec")  # For story_generate jobs
     
     if not project_id:
         return {"success": False, "error": "Project ID is required"}
@@ -581,6 +1198,7 @@ async def handle_ve_start_job(payload: Dict[str, Any], broadcast: Optional[Broad
         scene_ids=scene_ids,
         generator_id=generator_id,
         generator_config=generator_config,
+        story_spec=story_spec,
     )
     
     # TODO: Calculate VRAM requirement based on generator

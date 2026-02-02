@@ -339,6 +339,7 @@ export interface Job {
   depends_on: string[];
   generator_id?: string;
   generator_config?: Record<string, unknown>;
+  story_spec?: Record<string, unknown>;
   vram_gb_required: number;
   created_at: number;
   started_at?: number;

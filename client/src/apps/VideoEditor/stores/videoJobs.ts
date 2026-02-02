@@ -127,6 +127,8 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
         if (activeJobId.value === event.job_id) {
           activeJobId.value = null;
         }
+        // Refresh project to get updated artifacts
+        void refreshProjectAfterJob();
       } else if (event.stage === 'error') {
         job.status = 'failed';
         if (event.message) {
@@ -145,6 +147,28 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
         job.status = 'running';
         job.started_at = job.started_at || Date.now() / 1000;
       }
+    }
+  }
+
+  /**
+   * Refresh project state after a job completes to pick up generated artifacts.
+   */
+  async function refreshProjectAfterJob(): Promise<void> {
+    const projectId = projectStore.projectId;
+    if (!projectId) return;
+
+    try {
+      const response = await sendControlMessage<{
+        success: boolean;
+        project?: unknown;
+      }>('ve_get_project', { projectId });
+
+      if (response.success && response.project) {
+        // Update project store with server state (without triggering autosave)
+        projectStore.project = response.project as typeof projectStore.project;
+      }
+    } catch (e) {
+      console.error('Failed to refresh project after job:', e);
     }
   }
 
@@ -349,22 +373,108 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
   /**
    * Start story generation job
    */
-  async function generateStory(sceneIds?: string[]): Promise<string> {
-    return startJob('story_generate', { ...(sceneIds && { sceneIds }) });
+  async function generateStory(options?: {
+    topic?: string;
+    genre?: string;
+    numScenes?: number;
+    generatorId?: string;
+    generatorConfig?: Record<string, unknown>;
+  }): Promise<string> {
+    const projectId = projectStore.projectId;
+    if (!projectId) {
+      throw new Error('No project open');
+    }
+
+    // Pass story spec through generator config
+    const storySpec = {
+      topic: options?.topic || projectStore.story.title || 'Untitled story',
+      genre: options?.genre || projectStore.story.genre,
+      num_scenes: options?.numScenes || 5,
+    };
+
+    const response = await sendStreamMessage<{
+      success: boolean;
+      jobId?: string;
+      status?: JobStatus;
+      error?: string;
+    }>('ve_job_start', {
+      projectId,
+      jobType: 'story_generate',
+      generatorId: options?.generatorId || 'story_llm',
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+      storySpec,
+    });
+
+    if (!response.success || !response.jobId) {
+      throw new Error(response.error || 'Failed to start story job');
+    }
+
+    const job: Job = {
+      id: response.jobId,
+      type: 'story_generate',
+      status: response.status || 'queued',
+      clip_ids: [],
+      scene_ids: [],
+      depends_on: [],
+      generator_id: options?.generatorId || 'story_llm',
+      vram_gb_required: 0,
+      created_at: Date.now() / 1000,
+      artifact_paths: [],
+      last_seq: 0,
+      last_progress: 0,
+    };
+
+    jobs.value.set(job.id, job);
+    if (!activeJobId.value) {
+      activeJobId.value = job.id;
+    }
+
+    return job.id;
   }
 
   /**
-   * Start TTS generation for clips
+   * Start TTS generation for clips or all clips
    */
-  async function generateAudio(clipIds: string[]): Promise<string> {
-    return startJob('tts_generate', { clipIds });
+  async function generateAudio(options?: {
+    clipIds?: string[];
+    generatorId?: string;
+    generatorConfig?: Record<string, unknown>;
+  }): Promise<string> {
+    return startJob('tts_generate', {
+      clipIds: options?.clipIds || [],
+      generatorId: options?.generatorId || 'tts_coqui_xtts',
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+    });
   }
 
   /**
-   * Start video generation for clips
+   * Start image generation for clips or all clips
    */
-  async function generateVideo(clipIds: string[]): Promise<string> {
-    return startJob('video_generate', { clipIds });
+  async function generateImages(options?: {
+    clipIds?: string[];
+    generatorId?: string;
+    generatorConfig?: Record<string, unknown>;
+  }): Promise<string> {
+    return startJob('image_generate', {
+      clipIds: options?.clipIds || [],
+      generatorId: options?.generatorId || 't2i_sdxl',
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+    });
+  }
+
+  /**
+   * Start video generation for clips or all clips
+   */
+  async function generateVideo(options?: {
+    clipIds?: string[];
+    generatorId?: string;
+    generatorConfig?: Record<string, unknown>;
+  }): Promise<string> {
+    return startJob('video_generate', {
+      clipIds: options?.clipIds || [],
+      generatorId: options?.generatorId || 'i2v_slideshow',
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+    });
   }
 
   /**
@@ -377,7 +487,14 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
   /**
    * Regenerate specific clips with mode
    */
-  async function regenerateClips(clipIds: string[], mode: RegenerationMode): Promise<string> {
+  async function regenerateClips(
+    clipIds: string[],
+    mode: RegenerationMode,
+    options?: {
+      generatorId?: string;
+      generatorConfig?: Record<string, unknown>;
+    },
+  ): Promise<string> {
     const jobType: JobType =
       mode === 'preview_audio' || mode === 'regen_audio'
         ? 'tts_generate'
@@ -385,7 +502,32 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
           ? 'video_generate'
           : 'video_generate'; // regen_audio_video and regen_chain
 
-    return startJob(jobType, { clipIds, regenerationMode: mode });
+    return startJob(jobType, {
+      clipIds,
+      regenerationMode: mode,
+      ...(options?.generatorId && { generatorId: options.generatorId }),
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+    });
+  }
+
+  /**
+   * Run the full generation pipeline: story -> audio -> images -> video -> export
+   */
+  async function runFullPipeline(options?: {
+    storyTopic?: string;
+    storyGeneratorId?: string;
+    ttsGeneratorId?: string;
+    imageGeneratorId?: string;
+    videoGeneratorId?: string;
+  }): Promise<void> {
+    // Step 1: Generate story
+    await generateStory({
+      ...(options?.storyTopic && { topic: options.storyTopic }),
+      ...(options?.storyGeneratorId && { generatorId: options.storyGeneratorId }),
+    });
+
+    // Note: Subsequent steps should be triggered after completion
+    // through the job progress handler or manual UI action
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -425,6 +567,7 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
     loadJobs,
     clearCompleted,
     handleJobProgress,
+    refreshProjectAfterJob,
 
     // Generator operations
     loadGenerators,
@@ -433,8 +576,10 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
     // Convenience methods
     generateStory,
     generateAudio,
+    generateImages,
     generateVideo,
     exportProject,
     regenerateClips,
+    runFullPipeline,
   };
 });
