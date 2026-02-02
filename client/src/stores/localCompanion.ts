@@ -55,8 +55,8 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
   // For backward compatibility - expose url as the control endpoint
   const url = computed(() => controlWsUrl.value);
 
-  // Try to connect on startup
-  void connect();
+  // Connection is now lazy - it will connect automatically when request() or streamRequest() is called
+  // This prevents unnecessary connections when only Video Editor is being used
 
   function setPort(newPort: number | string | null) {
     if (newPort === null) return;

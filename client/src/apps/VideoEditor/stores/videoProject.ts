@@ -491,8 +491,8 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
   // Initialize
   // ─────────────────────────────────────────────────────────────────────
 
-  // Load recent projects on store creation
-  void loadRecentProjects();
+  // Note: loadRecentProjects() should be called from VideoEditorLayout component
+  // after ensuring the WebSocket connection is ready to avoid race conditions
 
   return {
     // State

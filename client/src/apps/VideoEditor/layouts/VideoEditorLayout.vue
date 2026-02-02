@@ -107,14 +107,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide } from 'vue';
+import { ref, provide, watch } from 'vue';
 import { useVideoProjectStore } from '../stores';
+import { useVideoCompanionStore } from '../stores/videoCompanion';
 import AssetLibraryPanel from '../components/AssetLibraryPanel.vue';
 import PropertiesPanel from '../components/PropertiesPanel.vue';
 import GenerationQueuePanel from '../components/GenerationQueuePanel.vue';
 import SettingsDialog from '../components/SettingsDialog.vue';
 
 const projectStore = useVideoProjectStore();
+const companionStore = useVideoCompanionStore();
 
 // UI State
 const leftDrawerOpen = ref(true);
@@ -142,6 +144,57 @@ async function saveProject(): Promise<void> {
     console.error('Failed to save project:', e);
   }
 }
+
+// Load recent projects after connection is ready
+let recentProjectsLoaded = false;
+let isLoadingRecentProjects = false;
+
+async function loadRecentProjectsWhenReady(): Promise<void> {
+  // Prevent duplicate calls - set flag immediately to block concurrent calls
+  if (recentProjectsLoaded || isLoadingRecentProjects) return;
+  isLoadingRecentProjects = true;
+
+  try {
+    // Wait for connection to be established
+    if (!companionStore.isConnected) {
+      // Wait up to 10 seconds for connection
+      let attempts = 0;
+      const maxAttempts = 20; // 20 * 500ms = 10 seconds
+
+      while (!companionStore.isConnected && attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        attempts++;
+      }
+    }
+
+    if (companionStore.isConnected) {
+      await projectStore.loadRecentProjects();
+      recentProjectsLoaded = true;
+    } else {
+      console.warn('Video Editor companion not connected, skipping recent projects load');
+    }
+  } catch (e) {
+    console.error('Failed to load recent projects:', e);
+    // Reset flag on error so it can be retried
+    isLoadingRecentProjects = false;
+  } finally {
+    isLoadingRecentProjects = false;
+  }
+}
+
+// Watch for connection changes and load when ready
+// Using immediate: true handles both cases:
+// 1. If already connected when component mounts
+// 2. When connection becomes available later
+watch(
+  () => companionStore.isConnected,
+  (isConnected) => {
+    if (isConnected) {
+      void loadRecentProjectsWhenReady();
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
