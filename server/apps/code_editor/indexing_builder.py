@@ -1036,6 +1036,152 @@ class IndexBuilder:
             })
             raise
     
+    async def remove_folders_from_index(
+        self,
+        folder_ids: List[str],  # List of folder IDs to remove
+    ) -> Dict[str, Any]:
+        """
+        Remove index data for specified folders.
+        
+        Args:
+            folder_ids: List of folder IDs to remove from index
+        """
+        self.cancelled = False
+        self.paused = False
+        
+        try:
+            # Load existing index
+            existing_data = self.project_manager.load_index_data(self.project_id)
+            if not existing_data:
+                # No existing index, nothing to remove
+                return {
+                    'success': True,
+                    'manifest': {},
+                }
+            
+            existing_symbols = existing_data.get('symbols', [])
+            existing_edges = existing_data.get('edges', [])
+            existing_chunks = existing_data.get('chunks', [])
+            existing_manifests = existing_data.get('metadata', {}).get('fileManifests', [])
+            existing_metadata = existing_data.get('metadata', {})
+            existing_folder_ids = set(existing_metadata.get('indexedFolderIds', []))
+            existing_folder_names_map = existing_metadata.get('indexedFolderNames', {})
+            
+            # Check if any of the folders to remove are actually in the index
+            folders_to_remove = set(folder_ids)
+            folders_in_index = folders_to_remove.intersection(existing_folder_ids)
+            
+            if not folders_in_index:
+                # None of the folders are in the index, nothing to remove
+                return {
+                    'success': True,
+                    'manifest': existing_metadata.get('manifest', {}),
+                }
+            
+            await self.notify_progress({
+                'phase': 'scanning',
+                'filesProcessed': 0,
+                'totalFiles': 0,
+            })
+            
+            # Identify files belonging to folders being removed
+            files_to_remove = set()
+            for manifest in existing_manifests:
+                file_path = manifest.get('filePath', '')
+                if self._file_belongs_to_folders(
+                    file_path,
+                    folders_to_remove,
+                    set(),  # We don't need folder names here, only IDs
+                    existing_folder_names_map,
+                ):
+                    files_to_remove.add(file_path)
+            
+            # Remove symbols, edges, chunks for files in folders being removed
+            updated_symbols = [
+                s for s in existing_symbols
+                if s.get('filePath') not in files_to_remove
+            ]
+            updated_edges = [
+                e for e in existing_edges
+                if e.get('filePath') not in files_to_remove
+            ]
+            updated_chunks = [
+                c for c in existing_chunks
+                if c.get('filePath') not in files_to_remove
+            ]
+            updated_manifests = [
+                m for m in existing_manifests
+                if m.get('filePath') not in files_to_remove
+            ]
+            
+            # Remove vectors for chunks in folders being removed
+            removed_chunk_ids = {
+                c.get('chunkId') for c in existing_chunks
+                if c.get('filePath') in files_to_remove
+            }
+            existing_vectors = self._load_existing_vectors()
+            updated_vectors = {
+                k: v for k, v in existing_vectors.items()
+                if k not in removed_chunk_ids
+            }
+            
+            # Update folder IDs and names mapping - remove deleted folders
+            updated_folder_ids = existing_folder_ids - folders_to_remove
+            updated_folder_names_map = {
+                name: fid for name, fid in existing_folder_names_map.items()
+                if fid not in folders_to_remove
+            }
+            
+            # Update index statistics
+            now = int(datetime.now().timestamp() * 1000)
+            existing_manifest = existing_metadata.get('manifest', {})
+            
+            manifest = {
+                'projectId': self.project_id,
+                'version': existing_manifest.get('version', 2),
+                'createdAt': existing_manifest.get('createdAt', now),
+                'updatedAt': now,
+                'fileCount': len(updated_manifests),
+                'symbolCount': len(updated_symbols),
+                'chunkCount': len(updated_chunks),
+                'embeddingModelId': existing_manifest.get('embeddingModelId', self.embedding_model_id),
+                'embeddingDim': existing_manifest.get('embeddingDim', 384),
+            }
+            
+            index_data = {
+                'metadata': {
+                    'manifest': manifest,
+                    'fileManifests': updated_manifests,
+                    'indexedFolderIds': list(updated_folder_ids),
+                    'indexedFolderNames': updated_folder_names_map,
+                },
+                'symbols': updated_symbols,
+                'edges': updated_edges,
+                'chunks': updated_chunks,
+            }
+            
+            await self._save_index(index_data, updated_vectors)
+            
+            await self.notify_progress({
+                'phase': 'complete',
+                'filesProcessed': len(files_to_remove),
+                'totalFiles': len(files_to_remove),
+            })
+            
+            return {
+                'success': True,
+                'manifest': manifest,
+            }
+            
+        except Exception as e:
+            await self.notify_progress({
+                'phase': 'error',
+                'filesProcessed': 0,
+                'totalFiles': 0,
+                'error': str(e),
+            })
+            raise
+    
     async def update_files(
         self,
         changed_files: List[Dict[str, Any]],  # [{filePath, systemPath, folderId}]
@@ -1355,6 +1501,41 @@ async def handle_index_folders(
     
     try:
         result = await builder.index_folders(folders, show_hidden, hf_token)
+        return {'success': True, **result}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+    finally:
+        if project_id in _active_builders:
+            del _active_builders[project_id]
+
+
+async def handle_remove_folders_from_index(
+    payload: Dict[str, Any],
+    progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+) -> Dict[str, Any]:
+    """RPC handler for removing folders from index."""
+    project_id = payload.get('projectId', '')
+    folder_ids = payload.get('folderIds', [])
+    embedding_model_id = payload.get('embeddingModelId', 'sentence-transformers/all-MiniLM-L6-v2')
+    
+    if not project_id:
+        return {'success': False, 'error': 'Project ID is required'}
+    
+    if not folder_ids:
+        return {'success': False, 'error': 'Folder IDs are required'}
+    
+    # Cancel any existing builder for this project
+    if project_id in _active_builders:
+        _active_builders[project_id].cancel()
+    
+    builder = IndexBuilder(project_id, embedding_model_id)
+    _active_builders[project_id] = builder
+    
+    if progress_callback:
+        builder.add_progress_callback(progress_callback)
+    
+    try:
+        result = await builder.remove_folders_from_index(folder_ids)
         return {'success': True, **result}
     except Exception as e:
         return {'success': False, 'error': str(e)}

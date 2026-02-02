@@ -324,16 +324,18 @@ export const useProjectStore = defineStore('project', () => {
   async function removeFolder(folderId: ProjectFolderId) {
     if (!activeProject.value) return;
 
-    // Purge this folder's index data before removing from project
-    // Note: Index management is now handled by companion
-    // The companion will handle index updates when folders are removed
+    // Remove folder's index data before removing from project
     if (activeProject.value.id) {
-      // Small delay to ensure state is updated
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        await indexOrchestrator.removeFolderFromIndex(activeProject.value.id, [folderId]);
 
-      // Reload index stats after purging
-      const indexingStore = useIndexingStore();
-      await indexingStore.loadStats();
+        // Reload index stats after removal
+        const indexingStore = useIndexingStore();
+        await indexingStore.loadStats();
+      } catch (error) {
+        console.error('Failed to remove folder from index:', error);
+        // Continue with folder removal even if index cleanup fails
+      }
     }
 
     const nextFolders = activeProject.value.folders.filter((f) => f.id !== folderId);

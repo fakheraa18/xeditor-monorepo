@@ -303,6 +303,15 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
         return;
       }
 
+      // Handle remove folders from index completion
+      if (type === 'remove_folders_from_index_response' && pendingRequests.has(id)) {
+        const { resolve: reqResolve } = pendingRequests.get(id)!;
+        pendingRequests.delete(id);
+        indexProgressCallbacks.delete(id);
+        reqResolve(payload);
+        return;
+      }
+
       // Handle file_changed push events (control only - never from stream)
       if (type === 'file_changed' && payload && source === 'control') {
         const filePath = payload.path as string;
@@ -483,7 +492,10 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
     const id = Math.random().toString(36).substring(7);
 
     // Register progress callback if provided (for indexing)
-    if (onProgress && (type === 'index_build' || type === 'index_folders')) {
+    if (
+      onProgress &&
+      (type === 'index_build' || type === 'index_folders' || type === 'remove_folders_from_index')
+    ) {
       indexProgressCallbacks.set(id, onProgress);
     }
 
@@ -505,7 +517,10 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
       }
 
       // Timeout after 60 seconds (or 5 minutes for indexing)
-      const timeout = type === 'index_build' || type === 'index_folders' ? 300000 : 60000;
+      const timeout =
+        type === 'index_build' || type === 'index_folders' || type === 'remove_folders_from_index'
+          ? 300000
+          : 60000;
       setTimeout(() => {
         if (pendingRequests.has(id)) {
           pendingRequests.delete(id);

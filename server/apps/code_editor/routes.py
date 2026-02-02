@@ -56,6 +56,7 @@ from apps.code_editor.indexing_builder import (
     handle_retrieve_chunks,
     handle_index_update_files,
     handle_index_folders,
+    handle_remove_folders_from_index,
 )
 from apps.code_editor.sets.manager import (
     handle_list_sets,
@@ -1269,6 +1270,31 @@ async def websocket_control_endpoint(websocket: WebSocket):
                             }))
                     
                     asyncio.create_task(run_folder_indexing())
+                    
+                elif msg_type == "remove_folders_from_index":
+                    async def progress_callback_remove(progress: dict):
+                        await websocket.send_text(json.dumps({
+                            "type": "index_progress",
+                            "id": request_id,
+                            "payload": progress
+                        }))
+                    
+                    async def run_remove_folders():
+                        try:
+                            response = await handle_remove_folders_from_index(message.get("payload"), progress_callback_remove)
+                            await websocket.send_text(json.dumps({
+                                "type": "remove_folders_from_index_response",
+                                "id": request_id,
+                                "payload": response
+                            }))
+                        except Exception as e:
+                            await websocket.send_text(json.dumps({
+                                "type": "remove_folders_from_index_response",
+                                "id": request_id,
+                                "payload": {"success": False, "error": str(e)}
+                            }))
+                    
+                    asyncio.create_task(run_remove_folders())
                     
                 elif msg_type == "index_update_files":
                     async def progress_callback(progress: dict):

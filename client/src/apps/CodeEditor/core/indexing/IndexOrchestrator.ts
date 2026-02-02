@@ -438,18 +438,55 @@ export class IndexOrchestrator {
 
   /**
    * Remove a specific folder's data from the index (without reindexing other folders)
-   * Companion handles folder management automatically - this method delegates to companion
    */
-  removeFolderFromIndex(_projectId: ProjectId, _folderId: ProjectFolderId): void {
+  async removeFolderFromIndex(projectId: ProjectId, folderIds: ProjectFolderId[]): Promise<void> {
     const companionStore = useLocalCompanionStore();
+    const projectStore = useProjectStore();
+
     if (!companionStore.isConnected) {
       throw new Error(
         'Local companion connection required for folder management. Please ensure the companion server is running.',
       );
     }
-    // Companion handles folder removal automatically during indexing
-    // If needed, we could add a companion RPC call here, but companion's indexing
-    // system handles folder changes automatically
+
+    try {
+      const response = await companionStore.request<{
+        success: boolean;
+        error?: string;
+      }>(
+        'remove_folders_from_index',
+        {
+          projectId,
+          folderIds,
+          embeddingModelId: projectStore.getEmbeddingModelId(),
+        },
+        (progress: unknown) => {
+          // Forward progress updates to IndexOrchestrator
+          if (progress && typeof progress === 'object' && 'phase' in progress) {
+            this.notifyProgress(progress as IndexingProgress);
+          }
+        },
+      );
+
+      if (!response.success) {
+        throw new Error(response.error ?? 'Failed to remove folders from index');
+      }
+
+      this.notifyProgress({
+        phase: 'complete',
+        filesProcessed: 0,
+        totalFiles: 0,
+      });
+    } catch (error) {
+      console.error('Failed to remove folders from index:', error);
+      this.notifyProgress({
+        phase: 'error',
+        filesProcessed: 0,
+        totalFiles: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
   }
 
   async reindexAll(
