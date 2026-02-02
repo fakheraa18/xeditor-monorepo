@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { getPreviewConfig, getFileExtension } from '../../config/previewable';
+import { getPreviewConfig, getFileExtension } from '../../../../config/previewable';
 import MarkdownPreview from './previews/MarkdownPreview.vue';
 
 interface Props {

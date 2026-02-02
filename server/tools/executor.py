@@ -19,9 +19,9 @@ from typing import Dict, Any, Optional, List, Callable, Awaitable
 from dataclasses import dataclass
 from datetime import datetime
 
-from indexing_builder import handle_retrieve_chunks
-from project import get_project_manager, sanitize_project_name
-from file_events import (
+from apps.code_editor.indexing_builder import handle_retrieve_chunks
+from apps.code_editor.project import get_project_manager, sanitize_project_name
+from apps.code_editor.file_events import (
     add_file_change_listener,
     remove_file_change_listener,
     notify_file_changed,
@@ -443,7 +443,7 @@ class ToolExecutor:
         # If path is absolute but starts with project_root, convert to relative
         if p.is_absolute() and self.project_root:
             try:
-                # Try to get relative path from project_root
+                # Try to get relative path from apps.code_editor.project_root
                 relative = p.relative_to(self.project_root)
                 # Use the relative path instead
                 result = self.project_root / relative
@@ -1570,7 +1570,7 @@ class ToolExecutor:
         
         filename = f"{safe_name}_{short_hash}.plan.md"
         
-        # Get project name from project manager
+        # Get project name from apps.code_editor.project manager
         project_name = "default"
         project_safe_name = "default"
         if self.project_root:
@@ -1904,7 +1904,7 @@ class ToolExecutor:
         if not model_config:
             return ToolResult(
                 success=False,
-                error="delegate_task requires model_config to be passed from agent_runner"
+                error="delegate_task requires model_config to be passed from apps.code_editor.agent_runner"
             )
         
         if not self.project_id:
@@ -1923,7 +1923,7 @@ class ToolExecutor:
         sub_agent_id = f"sub_{str(uuid.uuid4())[:8]}"
         
         # Import AgentRunner here to avoid circular imports
-        from agent_runner import get_agent_runner
+        from apps.code_editor.agent_runner import get_agent_runner
         
         agent_runner = get_agent_runner()
         
@@ -2029,7 +2029,7 @@ def get_tool_executor(
     """
     global _tool_executors
     
-    # Create cache key from project_root and mode
+    # Create cache key from apps.code_editor.project_root and mode
     cache_key = f"{project_root or 'default'}:{mode or 'default'}:{set_id}:{family or 'default'}:{version or 'default'}:{project_id or 'default'}"
     
     if cache_key not in _tool_executors:

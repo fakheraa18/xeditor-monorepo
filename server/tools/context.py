@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List, Callable, Awaitable
 from dataclasses import dataclass
 
 from tools.executor import execute_tool, ToolExecutor
-from indexing_builder import handle_retrieve_chunks
+from apps.code_editor.indexing_builder import handle_retrieve_chunks
 from providers import get_provider, LLMRequest
 
 

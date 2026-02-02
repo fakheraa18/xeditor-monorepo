@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
-from project import get_project_manager
+from apps.code_editor.project import get_project_manager
 from tools.descriptions import get_tool_definitions_for_mode
 from filesystem import list_directory
 

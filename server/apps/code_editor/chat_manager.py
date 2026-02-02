@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from datetime import datetime
-from project import get_project_manager
+from apps.code_editor.project import get_project_manager
 
 if TYPE_CHECKING:
     from parsers.base import ResponseParser

@@ -18,7 +18,7 @@ from pathspec.patterns.gitwildmatch import GitWildMatchPattern
 
 from parsing import parse_to_symbols_and_chunks
 from embeddings import embed_many
-from project import get_project_manager
+from apps.code_editor.project import get_project_manager
 
 # Global index builder instances (one per project)
 _active_builders: Dict[str, 'IndexBuilder'] = {}

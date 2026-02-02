@@ -10,7 +10,7 @@ from collections import defaultdict
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent, FileCreatedEvent, FileModifiedEvent, FileDeletedEvent, FileMovedEvent
 
-from indexing_builder import IgnoreEvaluator, BINARY_EXTENSIONS
+from apps.code_editor.indexing_builder import IgnoreEvaluator, BINARY_EXTENSIONS
 
 
 # Global file change listeners: project_id -> list of callbacks

@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useMarkdown } from '../../../components/ai/AIPanel/composables/useMarkdown';
+import { useMarkdown } from '../../../../../components/ai/AIPanel/composables/useMarkdown';
 
 interface Props {
   content: string;
@@ -40,8 +40,8 @@ const renderedContent = computed(() => {
 
 /* Markdown content styling */
 :deep(.markdown-preview-content) {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 :deep(.markdown-preview-content h1) {
@@ -210,7 +210,9 @@ const renderedContent = computed(() => {
   justify-content: center;
   color: #616161;
   border-radius: 3px;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 :deep(.code-copy-btn:hover) {
@@ -228,5 +230,4 @@ const renderedContent = computed(() => {
   background: #f5f5f5;
   color: #1a1a1a;
 }
-
 </style>

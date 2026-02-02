@@ -7,7 +7,7 @@ completely separate from tool operations to ensure full-fidelity file handling.
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from file_events import notify_file_changed
+from apps.code_editor.file_events import notify_file_changed
 
 
 # Maximum file size for editor operations (20MB)
@@ -24,7 +24,7 @@ def resolve_path(path: str, project_root: Optional[str] = None) -> Path:
     # If path is absolute but starts with project_root, convert to relative
     if p.is_absolute() and project_root:
         try:
-            # Try to get relative path from project_root
+            # Try to get relative path from apps.code_editor.project_root
             relative = p.relative_to(Path(project_root))
             # Use the relative path instead
             result = Path(project_root) / relative

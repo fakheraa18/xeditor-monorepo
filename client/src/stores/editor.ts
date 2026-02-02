@@ -5,8 +5,8 @@ import type { EditorTab } from '../core/types';
 import { useProjectStore } from './project';
 import SaveChangesDialog, {
   type SaveChangesAction,
-} from 'src/components/editor/SaveChangesDialog.vue';
-import DiffView from 'src/components/editor/DiffView.vue';
+} from 'src/apps/CodeEditor/components/editor/SaveChangesDialog.vue';
+import DiffView from 'src/apps/CodeEditor/components/editor/DiffView.vue';
 import { isPreviewable, getFileExtension } from '../config/previewable';
 
 export const useEditorStore = defineStore('editor', () => {

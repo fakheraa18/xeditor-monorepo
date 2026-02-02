@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from llm import handle_embedding_request, handle_embedding_batch_request
 from providers import get_provider_for_request, LLMRequest
-from indexer import handle_parse_request
+from apps.code_editor.indexer import handle_parse_request
 from vllm_manager import get_vllm_manager
 from filesystem import (
     handle_get_home_directory,
@@ -29,7 +29,7 @@ from prompts.manager import (
     handle_reload_prompts,
     handle_reset_prompts_to_defaults,
 )
-from project import (
+from apps.code_editor.project import (
     handle_list_projects,
     handle_get_project,
     handle_create_project,
@@ -40,8 +40,8 @@ from project import (
     handle_load_index_data,
 )
 from tools.executor import handle_execute_tool, handle_confirm_command, ensure_ripgrep_available
-from editor_io import handle_read_file_editor, handle_write_file_editor
-from indexing_builder import (
+from apps.code_editor.editor_io import handle_read_file_editor, handle_write_file_editor
+from apps.code_editor.indexing_builder import (
     handle_index_build,
     handle_index_cancel,
     handle_index_pause,
@@ -76,7 +76,7 @@ from sets.manager import (
     handle_read_tools_config,
     handle_write_tools_config,
 )
-from chat_manager import (
+from apps.code_editor.chat_manager import (
     handle_create_chat,
     handle_load_chat,
     handle_list_chats,
@@ -84,7 +84,7 @@ from chat_manager import (
     handle_rename_chat,
     handle_get_turn_debug,
 )
-from chat_truncation import handle_truncate_chat
+from apps.code_editor.chat_truncation import handle_truncate_chat
 from models.manager import (
     handle_list_models,
     handle_get_model,
@@ -98,13 +98,15 @@ from models.families import (
     handle_get_family,
     handle_validate_family,
 )
-from agent_runner import get_agent_runner
-from file_watcher import start_watching, stop_watching, add_file_change_listener
+from apps.code_editor.agent_runner import get_agent_runner
+from apps.code_editor.file_watcher import start_watching, stop_watching, add_file_change_listener
 from tools.executor import add_file_change_listener as add_tool_file_change_listener
-from project import get_project_manager
+from apps.code_editor.project import get_project_manager
 from stream_buffer import get_stream_buffer, init_stream_buffer, shutdown_stream_buffer
+from apps.video_editor.endpoints import router as video_editor_router
 
 app = FastAPI(title="XEditor Local Companion")
+app.include_router(video_editor_router)
 
 # Track active streaming tasks for cancellation
 active_streaming_tasks: dict[str, asyncio.Task] = {}

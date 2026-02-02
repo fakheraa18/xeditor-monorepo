@@ -11,7 +11,7 @@ For now, it simply truncates the turns list in the chat file.
 """
 
 from typing import Dict, Any, Optional
-from chat_manager import get_chat_manager
+from apps.code_editor.chat_manager import get_chat_manager
 
 
 class ChatTruncator:

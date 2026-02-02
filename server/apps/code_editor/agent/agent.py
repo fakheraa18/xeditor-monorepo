@@ -14,7 +14,7 @@ from tools.executor import get_tool_executor
 from tools.registry import get_tool_registry
 from tools.recording import get_tool_recorder, ContextPolicy
 from parsers.base import ResponseParser, ParsedResponse
-from project import get_project_manager
+from apps.code_editor.project import get_project_manager
 from providers import get_provider, LLMRequest
 
 

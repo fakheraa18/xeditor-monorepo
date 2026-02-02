@@ -45,7 +45,11 @@
             dense
             size="sm"
             :icon="statusIcon"
-            :class="['header-btn', indexingHeaderClass, { 'header-btn-active': isIndexExplorerOpen }]"
+            :class="[
+              'header-btn',
+              indexingHeaderClass,
+              { 'header-btn-active': isIndexExplorerOpen },
+            ]"
             @click="toggleIndexExplorer"
           >
             <q-tooltip :delay="300">
@@ -101,17 +105,10 @@
         <!-- Main content area with conditional panels -->
         <div class="main-content absolute-full row no-wrap">
           <!-- File Tree Panel -->
-          <div
-            v-if="showExplorer"
-            class="file-tree-panel"
-            :style="{ width: explorerWidth + 'px' }"
-          >
+          <div v-if="showExplorer" class="file-tree-panel" :style="{ width: explorerWidth + 'px' }">
             <FileTree />
             <!-- Resize Handle -->
-            <div
-              class="resize-handle"
-              @mousedown="startExplorerResize"
-            ></div>
+            <div class="resize-handle" @mousedown="startExplorerResize"></div>
           </div>
 
           <!-- Editor Area -->
@@ -126,10 +123,7 @@
             :style="{ width: aiPanelWidth + 'px' }"
           >
             <!-- Resize Handle -->
-            <div
-              class="resize-handle resize-handle-left"
-              @mousedown="startAIPanelResize"
-            ></div>
+            <div class="resize-handle resize-handle-left" @mousedown="startAIPanelResize"></div>
             <AIPanel />
           </div>
         </div>
@@ -155,15 +149,15 @@ import { useRouter, useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import FileTree from '../components/editor/FileTree.vue';
 import FileSearchModal from '../components/editor/FileSearchModal.vue';
-import AIPanel from '../components/ai/AIPanel/AIPanel.vue';
+import AIPanel from '../../../components/ai/AIPanel/AIPanel.vue';
 import StatusBar from '../components/editor/StatusBar.vue';
-import ConnectionOverlay from '../components/ConnectionOverlay.vue';
-import { useProjectStore } from '../stores/project';
-import { useAiConfigStore } from '../stores/aiConfig';
-import { useSearchStore } from '../stores/search';
-import { useEditorStore } from '../stores/editor';
-import { useIndexingStore } from '../stores/indexing';
-import { shortcutManager } from '../core/shortcuts/ShortcutManager';
+import ConnectionOverlay from '../../../components/ConnectionOverlay.vue';
+import { useProjectStore } from '../../../stores/project';
+import { useAiConfigStore } from '../../../stores/aiConfig';
+import { useSearchStore } from '../../../stores/search';
+import { useEditorStore } from '../../../stores/editor';
+import { useIndexingStore } from '../../../stores/indexing';
+import { shortcutManager } from '../../../core/shortcuts/ShortcutManager';
 
 const router = useRouter();
 const route = useRoute();
@@ -176,12 +170,7 @@ const indexingStore = useIndexingStore();
 
 const { debugEnabled } = storeToRefs(aiConfig);
 
-const {
-  progress,
-  statusText,
-  statusIcon,
-  isProcessing,
-} = storeToRefs(indexingStore);
+const { progress, statusText, statusIcon, isProcessing } = storeToRefs(indexingStore);
 
 function toggleDebugMode() {
   void aiConfig.setDebugEnabled(!debugEnabled.value);
@@ -208,9 +197,7 @@ const progressPercentage = computed(() => {
   if (!progress.value || progress.value.totalFiles === 0) {
     return '';
   }
-  const percent = Math.round(
-    (progress.value.filesProcessed / progress.value.totalFiles) * 100,
-  );
+  const percent = Math.round((progress.value.filesProcessed / progress.value.totalFiles) * 100);
   return `${percent}%`;
 });
 
@@ -378,10 +365,7 @@ onMounted(async () => {
   // Initialize project store first (required for editor state restoration)
   await projectStore.initialize();
   // Then initialize other stores and restore editor state in parallel
-  await Promise.all([
-    aiConfig.initialize(),
-    editorStore.restoreState(),
-  ]);
+  await Promise.all([aiConfig.initialize(), editorStore.restoreState()]);
 
   // Register Ctrl+P / Cmd+P for Quick Open
   shortcutManager.register({
@@ -531,7 +515,9 @@ onUnmounted(() => {
   color: #808080;
   width: 28px;
   height: 28px;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .header-btn:hover {

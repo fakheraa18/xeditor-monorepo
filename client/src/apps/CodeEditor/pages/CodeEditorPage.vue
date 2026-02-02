@@ -8,22 +8,12 @@
       <!-- Breadcrumb Navigation -->
       <div v-if="breadcrumbParts.length > 0" class="breadcrumb-bar row items-center no-wrap">
         <template v-for="(part, index) in breadcrumbParts" :key="index">
-          <q-icon
-            v-if="index > 0"
-            name="chevron_right"
-            size="14px"
-            class="breadcrumb-separator"
-          />
+          <q-icon v-if="index > 0" name="chevron_right" size="14px" class="breadcrumb-separator" />
           <span
             class="breadcrumb-item"
             :class="{ 'breadcrumb-current': index === breadcrumbParts.length - 1 }"
           >
-            <q-icon
-              v-if="index === 0"
-              name="folder"
-              size="14px"
-              class="breadcrumb-icon"
-            />
+            <q-icon v-if="index === 0" name="folder" size="14px" class="breadcrumb-icon" />
             <q-icon
               v-else-if="index === breadcrumbParts.length - 1"
               :name="getFileIcon(part).icon"
@@ -64,9 +54,9 @@ import { computed } from 'vue';
 import EditorTabs from '../components/editor/EditorTabs.vue';
 import MonacoEditor from '../components/editor/MonacoEditor.vue';
 import FilePreview from '../components/editor/FilePreview.vue';
-import { useEditorStore } from '../stores/editor';
-import { useProjectStore } from '../stores/project';
-import { getFileIcon } from '../utils/fileIcons';
+import { useEditorStore } from '../../../stores/editor';
+import { useProjectStore } from '../../../stores/project';
+import { getFileIcon } from '../../../utils/fileIcons';
 
 const editorStore = useEditorStore();
 const projectStore = useProjectStore();

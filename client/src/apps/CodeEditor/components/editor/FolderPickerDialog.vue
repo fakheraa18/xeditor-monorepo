@@ -168,7 +168,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { useLocalCompanionStore } from '../../stores/localCompanion';
+import { useLocalCompanionStore } from '../../../../stores/localCompanion';
 
 interface DirectoryEntry {
   name: string;

@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional, Callable, Awaitable
 from datetime import datetime
 from pathlib import Path
 
-from chat_manager import ChatManager, get_chat_manager
+from apps.code_editor.chat_manager import ChatManager, get_chat_manager
 from providers import get_provider, LLMRequest, LLMEvent
 from parsers.base import get_parser_for_request, ParsedResponse, strip_thinking_tags
 from tools.executor import get_tool_executor
@@ -19,7 +19,7 @@ from tools.registry import get_tool_registry
 from tools.context import ToolContext
 from prompts.manager import handle_resolve_prompt
 from prompts.context_builder import get_context_builder
-from project import get_project_manager
+from apps.code_editor.project import get_project_manager
 from sets.manager import get_set_manager
 
 
