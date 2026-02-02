@@ -217,10 +217,10 @@ const previousExplorerStateForIndex = ref<boolean | null>(null);
 const previousAIPanelStateForIndex = ref<boolean | null>(null);
 
 // Check if AI Settings page is currently open
-const isAISettingsOpen = computed(() => route.path === '/settings/ai');
+const isAISettingsOpen = computed(() => route.path === '/code/settings/ai');
 
 // Check if Index Explorer page is currently open
-const isIndexExplorerOpen = computed(() => route.path === '/index-explorer');
+const isIndexExplorerOpen = computed(() => route.path === '/code/index-explorer');
 
 // Panel widths (in pixels)
 const storedExplorerWidth = localStorage.getItem('xeditor-layout-explorer-width');
@@ -249,17 +249,17 @@ function toggleAIPanel() {
 
 function toggleAISettings() {
   if (isAISettingsOpen.value) {
-    void router.push('/');
+    void router.push('/code');
   } else {
-    void router.push('/settings/ai');
+    void router.push('/code/settings/ai');
   }
 }
 
 function toggleIndexExplorer() {
   if (isIndexExplorerOpen.value) {
-    void router.push('/');
+    void router.push('/code');
   } else {
-    void router.push('/index-explorer');
+    void router.push('/code/index-explorer');
   }
 }
 

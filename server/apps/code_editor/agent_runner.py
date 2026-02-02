@@ -11,16 +11,16 @@ from datetime import datetime
 from pathlib import Path
 
 from apps.code_editor.chat_manager import ChatManager, get_chat_manager
-from providers import get_provider, LLMRequest, LLMEvent
-from parsers.base import get_parser_for_request, ParsedResponse, strip_thinking_tags
-from tools.executor import get_tool_executor
-from tools.executor import approve_command
-from tools.registry import get_tool_registry
-from tools.context import ToolContext
-from prompts.manager import handle_resolve_prompt
-from prompts.context_builder import get_context_builder
+from apps.code_editor.providers import get_provider, LLMRequest, LLMEvent
+from apps.code_editor.parsers.base import get_parser_for_request, ParsedResponse, strip_thinking_tags
+from apps.code_editor.tools.executor import get_tool_executor
+from apps.code_editor.tools.executor import approve_command
+from apps.code_editor.tools.registry import get_tool_registry
+from apps.code_editor.tools.context import ToolContext
+from apps.code_editor.prompts.manager import handle_resolve_prompt
+from apps.code_editor.prompts.context_builder import get_context_builder
 from apps.code_editor.project import get_project_manager
-from sets.manager import get_set_manager
+from apps.code_editor.sets.manager import get_set_manager
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1221,20 +1221,20 @@ class AgentRunner:
                             result = await tool_func(tool_args, tool_context)
                             
                             # Convert to ToolResult-like object
-                            from tools.executor import ToolResult
+                            from apps.code_editor.tools.executor import ToolResult
                             tool_result = ToolResult(
                                 success=result.get("success", False),
                                 result=result.get("result"),
                                 error=result.get("error"),
                             )
                         except Exception as e:
-                            from tools.executor import ToolResult
+                            from apps.code_editor.tools.executor import ToolResult
                             tool_result = ToolResult(
                                 success=False,
                                 error=f"Custom tool execution failed: {str(e)}",
                             )
                     else:
-                        from tools.executor import ToolResult
+                        from apps.code_editor.tools.executor import ToolResult
                         tool_result = ToolResult(
                             success=False,
                             error=f"Custom tool module not found or missing function: {tool_name}",

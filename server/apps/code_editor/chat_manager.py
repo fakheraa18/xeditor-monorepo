@@ -11,7 +11,7 @@ from datetime import datetime
 from apps.code_editor.project import get_project_manager
 
 if TYPE_CHECKING:
-    from parsers.base import ResponseParser
+    from apps.code_editor.parsers.base import ResponseParser
 
 
 def get_chats_directory(project_id: str) -> Path:
@@ -180,7 +180,7 @@ class ChatManager:
         # Get parser for current family to serialize tool calls in the correct format
         parser: Optional["ResponseParser"] = None
         try:
-            from parsers.base import get_parser_for_request
+            from apps.code_editor.parsers.base import get_parser_for_request
             parser = get_parser_for_request(set_id, family, version, "agent")
         except Exception as e:
             print(f"Warning: Failed to get parser for family {family}: {e}")

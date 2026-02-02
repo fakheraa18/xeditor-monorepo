@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from parsing import parse_to_symbols_and_chunks
+from apps.code_editor.parsing import parse_to_symbols_and_chunks
 
 
 async def handle_parse_request(payload: dict[str, Any]):

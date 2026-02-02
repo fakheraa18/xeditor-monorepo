@@ -16,8 +16,8 @@ import numpy as np
 from pathspec import PathSpec
 from pathspec.patterns.gitwildmatch import GitWildMatchPattern
 
-from parsing import parse_to_symbols_and_chunks
-from embeddings import embed_many
+from apps.code_editor.parsing import parse_to_symbols_and_chunks
+from apps.code_editor.embeddings import embed_many
 from apps.code_editor.project import get_project_manager
 
 # Global index builder instances (one per project)
@@ -1608,7 +1608,7 @@ async def handle_retrieve_chunks(payload: Dict[str, Any]) -> Dict[str, Any]:
             chunks = [c for c in chunks if matches_folder_scope(c['filePath'])]
         
         # Load query embedding
-        from embeddings import embed_one
+        from apps.code_editor.embeddings import embed_one
         query_vector, dim = embed_one(embedding_model_id, query, token=hf_token)
         
         # Load vectors and compute similarities

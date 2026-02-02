@@ -9,13 +9,13 @@ from pathlib import Path
 import json
 import re
 
-from tools.context import ToolContext
-from tools.executor import get_tool_executor
-from tools.registry import get_tool_registry
-from tools.recording import get_tool_recorder, ContextPolicy
-from parsers.base import ResponseParser, ParsedResponse
+from apps.code_editor.tools.context import ToolContext
+from apps.code_editor.tools.executor import get_tool_executor
+from apps.code_editor.tools.registry import get_tool_registry
+from apps.code_editor.tools.recording import get_tool_recorder, ContextPolicy
+from apps.code_editor.parsers.base import ResponseParser, ParsedResponse
 from apps.code_editor.project import get_project_manager
-from providers import get_provider, LLMRequest
+from apps.code_editor.providers import get_provider, LLMRequest
 
 
 class Agent:
@@ -420,7 +420,7 @@ class Agent:
 
 class SubAgent:
     """
-    Sub-agent that can be called from tools.
+    Sub-agent that can be called from apps.code_editor.tools.
     Uses a smaller/faster LLM for quick tasks.
     """
     

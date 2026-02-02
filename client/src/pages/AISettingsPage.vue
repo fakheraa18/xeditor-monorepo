@@ -3,7 +3,7 @@
     <div class="ai-settings-layout fit column no-wrap">
       <!-- Header -->
       <div class="ai-settings-header row items-center q-pa-md">
-        <q-btn flat icon="arrow_back" to="/" class="q-mr-sm" />
+        <q-btn flat icon="arrow_back" @click="$router.back()" class="q-mr-sm" />
         <h4 class="q-ma-none">AI Settings</h4>
         <q-space />
         <q-btn
