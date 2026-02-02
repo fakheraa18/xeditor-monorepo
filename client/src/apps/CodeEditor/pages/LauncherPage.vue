@@ -14,8 +14,12 @@
               </q-card-section>
             </q-card>
 
-            <!-- Video Editor Card -->
-            <q-card class="app-card cursor-pointer" @click="$router.push('/video')">
+            <!-- Video Editor Card - Only shown when dev=true -->
+            <q-card
+              v-if="showVideoEditor"
+              class="app-card cursor-pointer"
+              @click="$router.push('/video')"
+            >
               <q-card-section class="column items-center q-pa-xl">
                 <q-icon name="movie" size="100px" color="secondary" />
                 <div class="text-h4 q-mt-md">Video Editor</div>
@@ -27,6 +31,23 @@
     </q-page-container>
   </q-layout>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+
+const route = useRoute();
+const router = useRouter();
+
+const showVideoEditor = computed(() => route.query.dev === 'true');
+
+onMounted(() => {
+  // Redirect to /code if dev parameter is not present
+  if (!showVideoEditor.value) {
+    router.replace('/code');
+  }
+});
+</script>
 
 <style scoped>
 .app-card {
