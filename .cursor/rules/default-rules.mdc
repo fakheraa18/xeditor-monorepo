@@ -2,7 +2,11 @@
 alwaysApply: true
 ---
 
-We are developing an AI assisted IDE. The project allows users to create various model by them self by settin gthier providers also, local (Lm studio/ollama/vllm..) or api providers (openai/anthopic/openrouter...). The best part of this project is, it lets community create prompts set (with modes like ask, plan or agent) and thir prompt respoense parsers also as well as their own tools.
+We are developing an AI assisted Editor that will have multiple Editors.
+
+CODEEDITOR:
+
+The first focus is on Code Editro IDE. The project allows users to create various model connections by them-selves by setting thier providers also, local (Lm studio/ollama/vllm..) or api providers (openai/anthopic/openrouter...). The best part of this project is, it lets community create prompts set (with modes like ask, plan or agent) and thir prompt respoense parsers also as well as their own tools.
 
 WE are using typescript, do not use "any" always follow strict types
 Always try to solve lint and vue-tsc errors after your full code done.
@@ -21,3 +25,7 @@ Always try to re use same components if possible.
 Better use stores to communicate rather too many emit and v-models for vue code.
 
 Always remember that we are making a new product here so we do not need any sort of backword compatibility, if we are refactoring anything, just refactor and do not keep backward compatibility unless specified specifically.
+
+VIDEOEDITOR: We recently started working on this.
+
+IMPORTANT: WHEN YOU ARE INSTRUCTED TO WORK ON CODEEDITOR, only work on codeEditor client and server. and WHEN YOU ARE INSTRUCTED TO WORK ON VIDEOEDITOR, only work on videoEditor client and server.
