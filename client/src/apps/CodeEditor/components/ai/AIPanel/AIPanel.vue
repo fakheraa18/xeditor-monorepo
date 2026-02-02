@@ -129,7 +129,11 @@ import { useViewState } from './composables/useViewState';
 import { usePromptSets } from './composables/usePromptSets';
 import { useChatInput } from './composables/useChatInput';
 import { useChatHistory } from './composables/useChatHistory';
-import type { TraceEvent, TraceEventToolCall, TraceEventToolResult } from '../../../core/types';
+import type {
+  TraceEvent,
+  TraceEventToolCall,
+  TraceEventToolResult,
+} from 'src/apps/CodeEditor/core/types';
 
 const projectStore = useProjectStore();
 const chatStore = useChatStore();

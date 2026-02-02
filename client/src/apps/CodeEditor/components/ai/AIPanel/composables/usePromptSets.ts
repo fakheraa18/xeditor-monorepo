@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { useAiConfigStore } from '../../../../stores/aiConfig';
 import { useLocalCompanionStore } from '../../../../../../stores/localCompanion';
-import type { Mode } from '../../../../core/types';
+import type { Mode } from 'src/apps/CodeEditor/core/types';
 
 export function usePromptSets() {
   const aiConfig = useAiConfigStore();

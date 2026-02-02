@@ -51,7 +51,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue';
 import { useEditorStore } from '../../../../stores/editor';
-import type { TraceEventFileChange } from '../../../../core/types';
+import type { TraceEventFileChange } from 'src/apps/CodeEditor/core/types';
 
 // Dynamic import for Monaco
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports

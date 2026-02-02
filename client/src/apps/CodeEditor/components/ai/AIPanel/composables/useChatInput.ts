@@ -7,7 +7,7 @@ import { useEditorStore } from '../../../../stores/editor';
 import { ContextManager } from '../../../../core/context/ContextManager';
 import { useMention } from './useMention';
 import { useTraceEvents } from './useTraceEvents';
-import type { TraceEvent, EditorTab, ChatSessionId } from '../../../../core/types';
+import type { TraceEvent, EditorTab, ChatSessionId } from 'src/apps/CodeEditor/core/types';
 import { isPreviewable, getFileExtension } from '../../../../config/previewable';
 import type { PendingQuestion, Question, QuestionSkippedData } from '../types/questions';
 import { QUESTION_SKIPPED_MARKER as SKIP_MARKER } from '../types/questions';

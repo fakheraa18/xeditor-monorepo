@@ -25,7 +25,7 @@
 import { useQuasar } from 'quasar';
 import { useEditorStore } from '../../../../stores/editor';
 import { useProjectStore } from '../../../../stores/project';
-import type { Artifact, EditorTab } from '../../../../core/types';
+import type { Artifact, EditorTab } from 'src/apps/CodeEditor/core/types';
 import { isPreviewable, getFileExtension } from '../../../../config/previewable';
 
 defineProps<{

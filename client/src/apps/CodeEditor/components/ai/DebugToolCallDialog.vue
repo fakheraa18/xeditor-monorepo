@@ -123,7 +123,7 @@ import type {
   TraceEventToolResult,
   TraceEventSubAgentStart,
   TraceEventSubAgentEnd,
-} from '../../core/types';
+} from 'src/apps/CodeEditor/core/types';
 
 interface Props {
   modelValue: boolean;

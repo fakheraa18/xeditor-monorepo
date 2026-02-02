@@ -567,7 +567,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useQuasar } from 'quasar';
 import { useAiConfigStore } from '../../stores/aiConfig';
 import { useLocalCompanionStore } from '../../../../stores/localCompanion';
-import type { PromptSetMetadata } from '../../core/types';
+import type { PromptSetMetadata } from 'src/apps/CodeEditor/core/types';
 import MonacoPromptEditor from './MonacoPromptEditor.vue';
 import MonacoParserEditor from './MonacoParserEditor.vue';
 import MonacoToolEditor from './MonacoToolEditor.vue';

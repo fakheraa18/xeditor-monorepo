@@ -264,7 +264,7 @@ import { useIndexingStore } from '../../stores/indexing';
 import { useLocalCompanionStore } from '../../../../stores/localCompanion';
 import { getFileIcon, getFolderIcon } from '../../utils/fileIcons';
 import FolderPickerDialog from './FolderPickerDialog.vue';
-import type { FileNode } from '../../core/types';
+import type { FileNode } from 'src/apps/CodeEditor/core/types';
 
 interface FlattenedNode {
   label: string;

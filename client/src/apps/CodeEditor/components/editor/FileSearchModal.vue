@@ -113,7 +113,7 @@ import { useProjectStore } from '../../stores/project';
 import { useEditorStore } from '../../stores/editor';
 import { useShortcuts } from '../../composables/useShortcuts';
 import SearchSettings from './SearchSettings.vue';
-import type { FileNode } from '../../core/types';
+import type { FileNode } from 'src/apps/CodeEditor/core/types';
 
 interface SearchableFile {
   name: string;

@@ -1,4 +1,4 @@
-import type { TraceEvent } from '../../../../core/types';
+import type { TraceEvent } from 'src/apps/CodeEditor/core/types';
 
 export function useTraceEvents() {
   function getTraceEventLabel(event: TraceEvent): string {

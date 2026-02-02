@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { SessionTokenStats, ContextUsage } from '../../../../core/types';
+import type { SessionTokenStats, ContextUsage } from 'src/apps/CodeEditor/core/types';
 
 const props = defineProps<{
   stats: SessionTokenStats;

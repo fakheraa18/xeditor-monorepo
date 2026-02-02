@@ -140,7 +140,7 @@ import type {
   TokenUsage,
   UsageBreakdown,
   ContextUsage,
-} from '../../../../core/types';
+} from 'src/apps/CodeEditor/core/types';
 import type { QuestionResponseData, QuestionSkippedData } from '../types/questions';
 import { QUESTION_RESPONSE_MARKER, QUESTION_SKIPPED_MARKER } from '../types/questions';
 import { COMMAND_APPROVED_MARKER, COMMAND_SKIPPED_MARKER } from '../composables/useChatInput';

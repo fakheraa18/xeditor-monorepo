@@ -281,7 +281,7 @@
 import { ref, watch, computed } from 'vue';
 import { useQuasar } from 'quasar';
 import { useLocalCompanionStore } from '../../../../stores/localCompanion';
-import type { DebugBundle } from '../../core/types';
+import type { DebugBundle } from 'src/apps/CodeEditor/core/types';
 
 interface Props {
   modelValue: boolean;

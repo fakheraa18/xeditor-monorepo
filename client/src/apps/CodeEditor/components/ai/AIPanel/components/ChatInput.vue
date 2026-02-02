@@ -190,7 +190,7 @@ import { ref } from 'vue';
 import type { QInput } from 'quasar';
 import { useMessageFormatting } from '../composables/useMessageFormatting';
 import type { MentionFile } from '../composables/useMention';
-import type { Mode } from '../../../../core/types';
+import type { Mode } from 'src/apps/CodeEditor/core/types';
 
 interface ModelConfig {
   id: string;

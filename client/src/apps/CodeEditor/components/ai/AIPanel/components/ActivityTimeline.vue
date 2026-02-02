@@ -124,7 +124,7 @@ import type {
   TraceEventAssistantMessage,
   TraceEventSubAgentStart,
   TraceEventSubAgentEnd,
-} from '../../../../core/types';
+} from 'src/apps/CodeEditor/core/types';
 
 const props = defineProps<{
   traceEvents: TraceEvent[];

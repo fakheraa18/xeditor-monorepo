@@ -409,7 +409,7 @@ import type {
   ProviderPresetsResponse,
   ProviderDefinition,
   ProviderParameterSchemaField,
-} from '../../core/types';
+} from 'src/apps/CodeEditor/core/types';
 
 const props = defineProps<{
   modelValue: boolean;
