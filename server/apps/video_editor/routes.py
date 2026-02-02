@@ -1,0 +1,373 @@
+"""
+Video Editor WebSocket Routes
+
+Provides dual WebSocket endpoints for the video editor:
+- /ws/ve/control: RPC operations (project CRUD, asset management)
+- /ws/ve/stream: Streaming operations (job progress, generation)
+
+This follows the same pattern as code_editor but with separate endpoints
+to avoid interference between the two apps.
+"""
+
+import json
+import asyncio
+from typing import Dict, Any, Set, Optional
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from apps.video_editor.project import (
+    handle_ve_create_project,
+    handle_ve_open_project,
+    handle_ve_save_project,
+    handle_ve_close_project,
+    handle_ve_get_project,
+    handle_ve_list_recent_projects,
+    handle_ve_check_folder,
+    handle_ve_update_settings,
+    handle_ve_update_library,
+    handle_ve_update_story,
+    handle_ve_update_timeline,
+)
+from apps.video_editor.generators.base import (
+    handle_ve_list_generators,
+    handle_ve_get_generator_capabilities,
+    handle_ve_find_compatible_generators,
+)
+from apps.video_editor.jobs.queue import (
+    handle_ve_start_job,
+    handle_ve_cancel_job,
+    handle_ve_get_job,
+    handle_ve_list_jobs,
+    get_job_queue,
+)
+
+
+router = APIRouter(prefix="/video-editor", tags=["video-editor"])
+
+# Track connected WebSocket clients
+_stream_websockets: Set[WebSocket] = set()
+_control_websockets: Set[WebSocket] = set()
+
+# Message types for stream endpoint
+STREAM_MESSAGE_TYPES = {"ve_job_start", "ve_job_cancel", "ve_job_resume"}
+
+
+async def init_video_editor() -> None:
+    """Initialize video editor on startup."""
+    # Register built-in generators
+    # TODO: Register default generators when implemented
+    pass
+
+
+async def shutdown_video_editor() -> None:
+    """Cleanup video editor on shutdown."""
+    queue = get_job_queue()
+    await queue.shutdown()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTTP Endpoints (for compatibility)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/")
+async def root():
+    """Video editor API root."""
+    return {
+        "status": "ok",
+        "message": "Video Editor API",
+        "version": "1.0.0",
+    }
+
+
+@router.get("/capabilities")
+async def capabilities():
+    """Return video editor capabilities."""
+    return {
+        "status": "ok",
+        "capabilities": {
+            "dualWebSocket": True,
+            "streamEndpoint": "/ws/ve/stream",
+            "controlEndpoint": "/ws/ve/control",
+            "jobTypes": ["story_generate", "tts_generate", "image_generate", "video_generate", "music_generate", "final_merge"],
+        }
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stream WebSocket Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.websocket("/ws/ve/stream")
+async def websocket_stream_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for streaming operations.
+    
+    Handles:
+    - ve_job_start: Start a generation job
+    - ve_job_cancel: Cancel a running job
+    - ve_job_resume: Resume job progress stream
+    
+    Receives:
+    - ve_job_progress: Job progress events
+    """
+    await websocket.accept()
+    print("[video_editor] Client connected (stream)")
+    _stream_websockets.add(websocket)
+    
+    async def broadcast_to_client(msg_type: str, payload: Dict[str, Any]) -> None:
+        """Send a message to this client."""
+        try:
+            await websocket.send_text(json.dumps({
+                "type": msg_type,
+                "payload": payload,
+            }))
+        except Exception:
+            pass
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            msg_type = message.get("type")
+            request_id = message.get("id")
+            payload = message.get("payload", {})
+            
+            print(f"[video_editor/stream] Received: {msg_type} (ID: {request_id})")
+            
+            try:
+                if msg_type == "ve_job_start":
+                    response = await handle_ve_start_job(payload, broadcast_to_client)
+                    await websocket.send_text(json.dumps({
+                        "type": "ve_job_start_response",
+                        "id": request_id,
+                        "payload": response,
+                    }))
+                
+                elif msg_type == "ve_job_cancel":
+                    response = await handle_ve_cancel_job(payload)
+                    await websocket.send_text(json.dumps({
+                        "type": "ve_job_cancel_response",
+                        "id": request_id,
+                        "payload": response,
+                    }))
+                
+                elif msg_type == "ve_job_resume":
+                    # Resume job progress from a sequence number
+                    # TODO: Implement job progress resumption
+                    await websocket.send_text(json.dumps({
+                        "type": "ve_job_resume_response",
+                        "id": request_id,
+                        "payload": {"success": True, "message": "Resume not yet implemented"},
+                    }))
+                
+                elif msg_type == "ping":
+                    await websocket.send_text(json.dumps({
+                        "type": "pong",
+                        "id": request_id,
+                    }))
+                
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "id": request_id,
+                        "message": f"Unsupported message type for stream endpoint: {msg_type}. Use /ws/ve/control for this operation.",
+                    }))
+            
+            except Exception as e:
+                print(f"[video_editor/stream] Error processing {msg_type}: {e}")
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "id": request_id,
+                    "message": f"Request failed: {str(e)}",
+                }))
+    
+    except WebSocketDisconnect:
+        print("[video_editor] Client disconnected (stream)")
+    except Exception as e:
+        print(f"[video_editor] WebSocket error (stream): {e}")
+    finally:
+        _stream_websockets.discard(websocket)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Control WebSocket Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.websocket("/ws/ve/control")
+async def websocket_control_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for control/RPC operations.
+    
+    Handles:
+    - Project operations (create, open, save, close)
+    - Asset library management
+    - Story updates
+    - Timeline updates
+    - Generator queries
+    - Job status queries
+    """
+    await websocket.accept()
+    print("[video_editor] Client connected (control)")
+    _control_websockets.add(websocket)
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            msg_type = message.get("type")
+            request_id = message.get("id")
+            payload = message.get("payload", {})
+            
+            print(f"[video_editor/control] Received: {msg_type} (ID: {request_id})")
+            
+            # Reject streaming messages on control endpoint
+            if msg_type in STREAM_MESSAGE_TYPES:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "id": request_id,
+                    "message": f"Message type '{msg_type}' should be sent to /ws/ve/stream endpoint",
+                }))
+                continue
+            
+            try:
+                response = None
+                response_type = f"{msg_type}_response"
+                
+                # ─────────────────────────────────────────────────────────
+                # Project Operations
+                # ─────────────────────────────────────────────────────────
+                
+                if msg_type == "ve_create_project":
+                    response = await handle_ve_create_project(payload)
+                
+                elif msg_type == "ve_open_project":
+                    response = await handle_ve_open_project(payload)
+                
+                elif msg_type == "ve_save_project":
+                    response = await handle_ve_save_project(payload)
+                
+                elif msg_type == "ve_close_project":
+                    response = await handle_ve_close_project(payload)
+                
+                elif msg_type == "ve_get_project":
+                    response = await handle_ve_get_project(payload)
+                
+                elif msg_type == "ve_list_recent_projects":
+                    response = await handle_ve_list_recent_projects(payload)
+                
+                elif msg_type == "ve_check_folder":
+                    response = await handle_ve_check_folder(payload)
+                
+                # ─────────────────────────────────────────────────────────
+                # Project Updates
+                # ─────────────────────────────────────────────────────────
+                
+                elif msg_type == "ve_update_settings":
+                    response = await handle_ve_update_settings(payload)
+                
+                elif msg_type == "ve_update_library":
+                    response = await handle_ve_update_library(payload)
+                
+                elif msg_type == "ve_update_story":
+                    response = await handle_ve_update_story(payload)
+                
+                elif msg_type == "ve_update_timeline":
+                    response = await handle_ve_update_timeline(payload)
+                
+                # ─────────────────────────────────────────────────────────
+                # Generator Operations
+                # ─────────────────────────────────────────────────────────
+                
+                elif msg_type == "ve_list_generators":
+                    response = await handle_ve_list_generators(payload)
+                
+                elif msg_type == "ve_get_generator_capabilities":
+                    response = await handle_ve_get_generator_capabilities(payload)
+                
+                elif msg_type == "ve_find_compatible_generators":
+                    response = await handle_ve_find_compatible_generators(payload)
+                
+                # ─────────────────────────────────────────────────────────
+                # Job Queries (not start/cancel which go on stream)
+                # ─────────────────────────────────────────────────────────
+                
+                elif msg_type == "ve_get_job":
+                    response = await handle_ve_get_job(payload)
+                
+                elif msg_type == "ve_list_jobs":
+                    response = await handle_ve_list_jobs(payload)
+                
+                # ─────────────────────────────────────────────────────────
+                # Utility
+                # ─────────────────────────────────────────────────────────
+                
+                elif msg_type == "ping":
+                    response = {"pong": True}
+                    response_type = "pong"
+                
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "id": request_id,
+                        "message": f"Unknown message type: {msg_type}",
+                    }))
+                    continue
+                
+                # Send response
+                await websocket.send_text(json.dumps({
+                    "type": response_type,
+                    "id": request_id,
+                    "payload": response,
+                }))
+            
+            except Exception as e:
+                print(f"[video_editor/control] Error processing {msg_type}: {e}")
+                import traceback
+                traceback.print_exc()
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "id": request_id,
+                    "message": f"Request failed: {str(e)}",
+                }))
+    
+    except WebSocketDisconnect:
+        print("[video_editor] Client disconnected (control)")
+    except Exception as e:
+        print(f"[video_editor] WebSocket error (control): {e}")
+    finally:
+        _control_websockets.discard(websocket)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Broadcast Utilities
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def broadcast_to_stream(msg_type: str, payload: Dict[str, Any]) -> None:
+    """Broadcast a message to all stream clients."""
+    message = json.dumps({"type": msg_type, "payload": payload})
+    disconnected = set()
+    
+    for ws in _stream_websockets:
+        try:
+            await ws.send_text(message)
+        except Exception:
+            disconnected.add(ws)
+    
+    for ws in disconnected:
+        _stream_websockets.discard(ws)
+
+
+async def broadcast_to_control(msg_type: str, payload: Dict[str, Any]) -> None:
+    """Broadcast a message to all control clients."""
+    message = json.dumps({"type": msg_type, "payload": payload})
+    disconnected = set()
+    
+    for ws in _control_websockets:
+        try:
+            await ws.send_text(message)
+        except Exception:
+            disconnected.add(ws)
+    
+    for ws in disconnected:
+        _control_websockets.discard(ws)

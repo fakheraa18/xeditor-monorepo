@@ -1,14 +1,12 @@
 <template>
   <q-layout view="hHh lpR fFf">
-    <q-header elevated class="bg-secondary text-white">
-      <q-toolbar>
-        <q-btn flat round dense icon="arrow_back" to="/" />
-        <q-toolbar-title>Video Editor</q-toolbar-title>
-      </q-toolbar>
-    </q-header>
-
     <q-page-container>
       <router-view />
     </q-page-container>
   </q-layout>
 </template>
+
+<script setup lang="ts">
+// The layout is minimal because VideoEditorPage handles its own layout
+// when a project is open (including toolbar, drawers, etc.)
+</script>

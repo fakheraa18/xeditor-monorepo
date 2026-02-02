@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from apps.code_editor.routes import router as code_editor_router, init_app as init_code_editor, shutdown_app as shutdown_code_editor
-from apps.video_editor.endpoints import router as video_editor_router
+from apps.video_editor.endpoints import router as video_editor_router, init_video_editor, shutdown_video_editor
 
 app = FastAPI(title="XEditor Local Companion")
 
@@ -18,11 +18,13 @@ app.include_router(video_editor_router)
 async def startup_event():
     """Initialize apps on startup."""
     await init_code_editor()
+    await init_video_editor()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup apps on shutdown."""
     await shutdown_code_editor()
+    await shutdown_video_editor()
 
 app.add_middleware(
     CORSMiddleware,
