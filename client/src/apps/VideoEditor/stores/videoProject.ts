@@ -63,7 +63,13 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
   async function sendControlMessage<T>(type: string, payload: Record<string, unknown>): Promise<T> {
     // Use the companion store's request method but with ve_ prefix
     const response = await companion.request(type, payload);
-    if (response && typeof response === 'object' && 'error' in response) {
+    // Only throw if error exists and is truthy (not null/undefined/empty string)
+    if (
+      response &&
+      typeof response === 'object' &&
+      'error' in response &&
+      (response as { error?: string | null }).error
+    ) {
       throw new Error((response as { error: string }).error);
     }
     return response as T;
