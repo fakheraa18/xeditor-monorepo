@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useEditorStore } from '../../stores/editor';
+import { monacoLanguageService } from '../../services/MonacoLanguageService';
 
 // Dynamic import for Monaco
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
@@ -137,6 +138,9 @@ onMounted(async () => {
   monaco = await import('monaco-editor');
   if (!monaco || !editorContainer.value) return;
 
+  // Initialize language service (providers, diagnostics)
+  monacoLanguageService.initialize();
+
   editorInstance = monaco.editor.create(editorContainer.value, {
     value: '',
     language: 'typescript',
@@ -262,6 +266,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   isDisposing = true;
+  monacoLanguageService.dispose();
 
   // Dispose model first, then editor
   // Add small delay to allow async operations to complete

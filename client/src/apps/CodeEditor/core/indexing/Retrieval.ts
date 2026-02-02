@@ -1,6 +1,6 @@
 import type { ProjectId, ProjectFolderId } from '../types';
 import { loadIndex } from './persistence';
-import type { SearchResult } from './types';
+import type { SearchResult, Symbol } from './types';
 import { useLocalCompanionStore } from '../../../../stores/localCompanion';
 import { useProjectStore } from '../../stores/project';
 
@@ -289,6 +289,33 @@ export class Retrieval {
     }
 
     return results;
+  }
+
+  async findExactSymbol(
+    projectId: ProjectId,
+    symbolName: string,
+    folderIds?: ProjectFolderId[],
+  ): Promise<Symbol | null> {
+    const indexData = await loadIndex(projectId);
+    if (!indexData) {
+      return null;
+    }
+
+    // Try exact match first
+    let symbol = indexData.symbols.find(
+      (s) => s.name === symbolName && this.matchesFolderScope(s.filePath, folderIds),
+    );
+
+    // Fallback to case-insensitive match
+    if (!symbol) {
+      symbol = indexData.symbols.find(
+        (s) =>
+          s.name.toLowerCase() === symbolName.toLowerCase() &&
+          this.matchesFolderScope(s.filePath, folderIds),
+      );
+    }
+
+    return symbol || null;
   }
 }
 
