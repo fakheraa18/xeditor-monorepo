@@ -168,6 +168,7 @@ const localSettings = ref<ProjectSettings>({
     orientation: 'landscape',
   },
   default_generators: {},
+  generator_configs: {},
 });
 
 // Options

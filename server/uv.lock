@@ -1826,6 +1826,7 @@ gpu = [
 video-editor = [
     { name = "accelerate" },
     { name = "diffusers" },
+    { name = "huggingface-hub" },
     { name = "moviepy" },
     { name = "pillow" },
     { name = "scipy" },
@@ -1840,6 +1841,7 @@ requires-dist = [
     { name = "diffusers", marker = "extra == 'video-editor'", specifier = ">=0.29.0" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "huggingface-hub", marker = "extra == 'video-editor'", specifier = ">=0.23.0" },
     { name = "light-embed" },
     { name = "litellm" },
     { name = "moviepy", marker = "extra == 'video-editor'", specifier = ">=2.0.0" },

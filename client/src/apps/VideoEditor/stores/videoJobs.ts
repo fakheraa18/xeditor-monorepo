@@ -385,6 +385,7 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
     topic?: string;
     genre?: string;
     numScenes?: number;
+    targetDurationSeconds?: number;
     generatorId?: string;
     generatorConfig?: Record<string, unknown>;
   }): Promise<string> {
@@ -393,12 +394,16 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
       throw new Error('No project open');
     }
 
-    // Pass story spec through generator config
-    const storySpec = {
+    // Pass story spec through to server
+    const storySpec: Record<string, unknown> = {
       topic: options?.topic || projectStore.story.title || 'Untitled story',
       genre: options?.genre || projectStore.story.genre,
       num_scenes: options?.numScenes || 5,
     };
+
+    if (options?.targetDurationSeconds) {
+      storySpec.target_duration_seconds = options.targetDurationSeconds;
+    }
 
     const response = await sendStreamMessage<{
       success: boolean;
