@@ -1,13 +1,13 @@
 <template>
   <div class="generation-queue-panel q-pa-sm">
     <div class="row items-center">
-      <div class="text-subtitle2 text-white">Generation Queue</div>
+      <div class="text-subtitle2 text-dark">Generation Queue</div>
       <q-space />
       <q-btn
         v-if="completedJobs.length > 0"
         flat
         size="sm"
-        color="grey"
+        color="primary"
         label="Clear Completed"
         @click="clearCompleted"
       />
@@ -16,18 +16,18 @@
     <div class="queue-content row q-gutter-sm q-mt-sm">
       <!-- Active Job -->
       <div v-if="activeJob" class="active-job col-4">
-        <q-card flat class="bg-grey-8">
+        <q-card flat class="bg-grey-2">
           <q-card-section class="q-pa-sm">
             <div class="row items-center">
               <q-spinner color="primary" size="sm" class="q-mr-sm" />
-              <span class="text-caption">{{ getJobLabel(activeJob) }}</span>
+              <span class="text-caption text-dark">{{ getJobLabel(activeJob) }}</span>
               <q-space />
               <q-btn
                 flat
                 round
                 size="xs"
                 icon="close"
-                color="grey"
+                color="grey-7"
                 @click="cancelJob(activeJob.id)"
               />
             </div>
@@ -37,7 +37,7 @@
               size="4px"
               class="q-mt-sm"
             />
-            <div class="text-caption text-grey q-mt-xs">
+            <div class="text-caption text-grey-8 q-mt-xs">
               {{ activeProgress?.message || 'Starting...' }}
             </div>
           </q-card-section>
@@ -48,8 +48,8 @@
       <div v-for="job in pendingJobs.slice(0, 5)" :key="job.id" class="pending-job">
         <q-chip
           :removable="job.status === 'queued'"
-          color="grey-7"
-          text-color="white"
+          color="grey-3"
+          text-color="dark"
           size="sm"
           @remove="cancelJob(job.id)"
         >
@@ -59,10 +59,12 @@
       </div>
 
       <!-- More indicator -->
-      <div v-if="pendingJobs.length > 5" class="text-grey">+{{ pendingJobs.length - 5 }} more</div>
+      <div v-if="pendingJobs.length > 5" class="text-grey-8">
+        +{{ pendingJobs.length - 5 }} more
+      </div>
 
       <!-- No jobs message -->
-      <div v-if="!activeJob && pendingJobs.length === 0" class="text-grey-6 text-caption">
+      <div v-if="!activeJob && pendingJobs.length === 0" class="text-grey-8 text-caption">
         No active generation jobs
       </div>
     </div>

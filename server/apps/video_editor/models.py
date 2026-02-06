@@ -408,6 +408,9 @@ class ProjectSettings(BaseModel):
     vram_target_gb: float = 24.0
     canvas: CanvasSettings = Field(default_factory=CanvasSettings)
     default_generators: DefaultGeneratorSelections = Field(default_factory=DefaultGeneratorSelections)
+    # Per-generator saved configs (generator_id -> custom settings dict)
+    # e.g. {"story_llm": {"backend": "local", "model_repo_id": "Qwen/Qwen2.5-3B-Instruct", ...}}
+    generator_configs: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     description: Optional[str] = None
     genre: Optional[str] = None
 

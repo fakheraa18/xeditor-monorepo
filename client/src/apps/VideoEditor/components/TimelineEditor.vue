@@ -336,6 +336,7 @@ async function exportVideo(): Promise<void> {
 .timeline-tracks {
   flex: 1;
   overflow-y: auto;
+  background: #ffffff;
 }
 
 .timeline-track {
@@ -356,7 +357,7 @@ async function exportVideo(): Promise<void> {
 .track-content {
   flex: 1;
   position: relative;
-  background: var(--q-grey-1);
+  background: #f8f9fa;
 }
 
 .timeline-clip {

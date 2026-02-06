@@ -386,6 +386,8 @@ export interface ProjectSettings {
   vram_target_gb: number;
   canvas: CanvasSettings;
   default_generators: DefaultGeneratorSelections;
+  /** Per-generator saved configs (generator_id -> custom settings dict) */
+  generator_configs: Record<string, Record<string, unknown>>;
   description?: string;
   genre?: string;
 }
@@ -693,6 +695,7 @@ export function createDefaultProjectSettings(): ProjectSettings {
       orientation: 'landscape',
     },
     default_generators: {},
+    generator_configs: {},
   };
 }
 

@@ -4,13 +4,6 @@
       <div class="text-h5">Story Designer</div>
       <q-space />
       <q-btn color="primary" icon="add" label="Add Scene" @click="addScene" />
-      <q-btn
-        flat
-        icon="auto_awesome"
-        label="Generate with AI"
-        class="q-ml-sm"
-        @click="generateWithAI"
-      />
     </div>
 
     <!-- Story Meta -->
@@ -49,6 +42,94 @@
         />
       </q-card-section>
     </q-card>
+
+    <!-- AI Generation Settings -->
+    <q-expansion-item
+      icon="auto_awesome"
+      label="AI Story Generation"
+      caption="Configure model, provider, and script parameters"
+      class="q-mb-md"
+      default-opened
+    >
+      <q-card flat bordered>
+        <q-card-section>
+          <!-- LLM Generator UI Schema (rendered from server capabilities) -->
+          <template v-if="storyLLMCapabilities">
+            <GeneratorUiRenderer
+              :schema="storyLLMCapabilities.ui_schema"
+              :model-value="generatorConfig"
+              @update:model-value="onGeneratorConfigChange"
+            />
+          </template>
+          <div v-else class="text-grey-7 text-caption">
+            Loading generator settings...
+          </div>
+
+          <q-separator class="q-my-md" />
+
+          <!-- Script Parameters -->
+          <div class="text-subtitle2 q-mb-sm">Script Parameters</div>
+          <div class="row q-gutter-md">
+            <q-input
+              v-model.number="scriptParams.numScenes"
+              label="Number of Scenes"
+              type="number"
+              outlined
+              dense
+              :min="1"
+              :max="20"
+              style="width: 150px"
+            />
+            <q-select
+              v-model="scriptParams.targetDuration"
+              :options="durationOptions"
+              label="Target Duration"
+              outlined
+              dense
+              emit-value
+              map-options
+              style="width: 180px"
+            />
+          </div>
+
+          <q-separator class="q-my-md" />
+
+          <!-- Action Buttons -->
+          <div class="row q-gutter-sm">
+            <q-btn
+              v-if="generatorConfig.backend === 'local'"
+              outline
+              color="secondary"
+              icon="download"
+              label="Download Model"
+              :loading="isDownloading"
+              @click="downloadModel"
+            >
+              <q-tooltip>Download the selected HuggingFace model to local cache</q-tooltip>
+            </q-btn>
+            <q-btn
+              color="primary"
+              icon="auto_awesome"
+              label="Generate Story with AI"
+              :loading="isGenerating"
+              @click="generateWithAI"
+            />
+          </div>
+
+          <!-- Progress indicator -->
+          <div v-if="activeProgress" class="q-mt-md">
+            <q-linear-progress
+              :value="activeProgress.overall_progress"
+              color="primary"
+              class="q-mb-xs"
+            />
+            <div class="text-caption text-grey-7">
+              {{ activeProgress.message || activeProgress.stage }}
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-expansion-item>
 
     <!-- Scenes List -->
     <div class="scenes-container">
@@ -185,8 +266,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, reactive, watch, onMounted } from 'vue';
 import { useVideoProjectStore, useVideoJobsStore } from '../stores';
+import GeneratorUiRenderer from './GeneratorUiRenderer.vue';
 import type { StoryScene, ScriptLine } from '../types';
 
 const projectStore = useVideoProjectStore();
@@ -194,6 +276,10 @@ const jobsStore = useVideoJobsStore();
 
 const story = computed(() => projectStore.story);
 const library = computed(() => projectStore.library);
+
+// ─────────────────────────────────────────────────────────────────────
+// Genre options
+// ─────────────────────────────────────────────────────────────────────
 
 const genreOptions = [
   { label: 'Advertising', value: 'advertising' },
@@ -212,8 +298,97 @@ const characterOptions = computed(() => [
   })),
 ]);
 
+// ─────────────────────────────────────────────────────────────────────
+// AI Generation Settings
+// ─────────────────────────────────────────────────────────────────────
+
+const storyLLMCapabilities = computed(
+  () => jobsStore.generators.find((g) => g.id === 'story_llm') ?? null,
+);
+
+/** Generator config (persisted in project settings.generator_configs.story_llm) */
+const generatorConfig = reactive<Record<string, unknown>>({
+  backend: 'local',
+  model_repo_id: 'Qwen/Qwen2.5-3B-Instruct',
+  custom_model_repo_id: '',
+  torch_dtype: 'auto',
+  provider_type: 'ollama',
+  provider_base_url: 'http://localhost:11434',
+  provider_model_id: 'llama3.1',
+  provider_api_key: '',
+  temperature: 0.7,
+  max_new_tokens: 4096,
+  top_p: 0.9,
+});
+
+const scriptParams = reactive({
+  numScenes: 5,
+  targetDuration: 60,
+});
+
+const durationOptions = [
+  { label: '15 seconds', value: 15 },
+  { label: '30 seconds', value: 30 },
+  { label: '1 minute', value: 60 },
+  { label: '2 minutes', value: 120 },
+  { label: '3 minutes', value: 180 },
+  { label: '5 minutes', value: 300 },
+];
+
+const isGenerating = ref(false);
+const isDownloading = ref(false);
+
+// Active progress for the current story/download job
+const activeProgress = computed(() => {
+  const progress = jobsStore.activeJobProgress;
+  if (!progress) return null;
+  const activeJob = jobsStore.activeJob;
+  if (
+    activeJob &&
+    (activeJob.type === 'script_generate' || activeJob.type === 'model_download')
+  ) {
+    return progress;
+  }
+  return null;
+});
+
+// Load saved config from project settings on mount
+onMounted(() => {
+  loadSavedConfig();
+});
+
+// Watch for project changes (e.g. opening a different project)
+watch(
+  () => projectStore.projectId,
+  () => loadSavedConfig(),
+);
+
+function loadSavedConfig(): void {
+  const saved = projectStore.settings?.generator_configs?.story_llm;
+  if (saved && typeof saved === 'object') {
+    Object.assign(generatorConfig, saved);
+  }
+}
+
+function onGeneratorConfigChange(newValues: Record<string, unknown>): void {
+  Object.assign(generatorConfig, newValues);
+  saveConfigToProject();
+}
+
+function saveConfigToProject(): void {
+  if (!projectStore.settings) return;
+  const currentSettings = { ...projectStore.settings };
+  const configs = { ...(currentSettings.generator_configs || {}) };
+  configs.story_llm = { ...generatorConfig };
+  currentSettings.generator_configs = configs;
+  void projectStore.updateSettings(currentSettings);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Scene Management
+// ─────────────────────────────────────────────────────────────────────
+
 function markDirty(): void {
-  // Trigger autosave via the store
   projectStore.markDirty();
 }
 
@@ -280,15 +455,38 @@ function removeCharacterFromScene(scene: StoryScene, charId: string): void {
   markDirty();
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// AI Actions
+// ─────────────────────────────────────────────────────────────────────
+
+async function downloadModel(): Promise<void> {
+  isDownloading.value = true;
+  try {
+    await jobsStore.startJob('model_download', {
+      generatorId: 'story_llm',
+      generatorConfig: { ...generatorConfig },
+    });
+  } catch (e) {
+    console.error('Failed to start model download:', e);
+  } finally {
+    isDownloading.value = false;
+  }
+}
+
 async function generateWithAI(): Promise<void> {
+  isGenerating.value = true;
   try {
     await jobsStore.generateStory({
       topic: story.value.title || 'A compelling video story',
       ...(story.value.genre && { genre: story.value.genre }),
-      numScenes: 5,
+      numScenes: scriptParams.numScenes,
+      targetDurationSeconds: scriptParams.targetDuration,
+      generatorConfig: { ...generatorConfig },
     });
   } catch (e) {
     console.error('Failed to start story generation:', e);
+  } finally {
+    isGenerating.value = false;
   }
 }
 </script>

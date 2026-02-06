@@ -297,6 +297,7 @@ class JobQueue:
             JobType.LIPSYNC: self._run_lipsync_job,
             JobType.SCENE_PLAN: self._run_plan_job,
             JobType.FINAL_MERGE: self._run_merge_job,
+            JobType.MODEL_DOWNLOAD: self._run_model_download_job,
         }
         return handlers.get(job_type)
 
@@ -376,6 +377,7 @@ class JobQueue:
     ) -> None:
         """Run story generation job (LLM-based)."""
         from apps.video_editor.project import get_video_project_manager
+        from apps.video_editor.models import SceneDescription
 
         job = queued.job
         project = self._get_project(queued.project_id)
@@ -388,15 +390,39 @@ class JobQueue:
             raise asyncio.CancelledError()
 
         try:
-            topic = job.story_spec.get("topic", "") if job.story_spec else ""
-            genre = job.story_spec.get("genre") if job.story_spec else None
-            num_scenes = job.story_spec.get("num_scenes", 5) if job.story_spec else 5
+            spec = job.story_spec or {}
+            topic = spec.get("topic", "")
+            genre = spec.get("genre")
+            num_scenes = spec.get("num_scenes", 5)
+            target_duration = spec.get("target_duration_seconds")
+
+            # Build character info for the prompt
+            char_info = None
+            if project.library.characters:
+                char_info = [
+                    {
+                        "code": c.code,
+                        "name": c.name,
+                        "description": c.description or "",
+                    }
+                    for c in project.library.characters
+                ]
+
+            # Build code→id lookup
+            char_code_to_id: Dict[str, str] = {}
+            for c in project.library.characters:
+                char_code_to_id[c.code.upper()] = c.id
+                char_code_to_id[c.name.upper()] = c.id
 
             progress_cb = self._make_progress_callback(queued, "generating_story")
 
             if hasattr(gen, "generate_story"):
                 result = await gen.generate_story(
-                    topic=topic, genre=genre, num_scenes=num_scenes,
+                    topic=topic,
+                    genre=genre,
+                    num_scenes=num_scenes,
+                    target_duration_seconds=target_duration,
+                    characters=char_info,
                     progress_callback=progress_cb,
                 )
             else:
@@ -411,16 +437,42 @@ class JobQueue:
             if story_data:
                 scenes = []
                 for idx, sd in enumerate(story_data.get("scenes", [])):
-                    script_lines = []
-                    narration = sd.get("narration", "")
-                    if narration:
-                        script_lines.append(ScriptLine(text=narration))
+                    script_lines: List[ScriptLine] = []
+                    scene_character_ids: List[str] = []
 
-                    from apps.video_editor.models import SceneDescription
+                    # New format: script_lines array with speaker/text/emotion
+                    raw_lines = sd.get("script_lines", [])
+                    if raw_lines:
+                        for sl in raw_lines:
+                            speaker = (sl.get("speaker") or "NARRATOR").strip().upper()
+                            text = sl.get("text", "")
+                            if not text:
+                                continue
+
+                            # Map speaker to character_id
+                            character_id: Optional[str] = None
+                            if speaker != "NARRATOR":
+                                character_id = char_code_to_id.get(speaker)
+                                if character_id and character_id not in scene_character_ids:
+                                    scene_character_ids.append(character_id)
+
+                            script_lines.append(ScriptLine(
+                                text=text,
+                                character_id=character_id,
+                                emotion_hint=sl.get("emotion_hint"),
+                                duration_hint=sl.get("duration_hint"),
+                            ))
+                    else:
+                        # Legacy format: single narration string
+                        narration = sd.get("narration", "")
+                        if narration:
+                            script_lines.append(ScriptLine(text=narration))
+
                     scenes.append(StoryScene(
                         title=sd.get("title", f"Scene {idx + 1}"),
                         order=idx,
                         script_lines=script_lines,
+                        character_ids=scene_character_ids,
                         description=SceneDescription(
                             visual_prompt=sd.get("visual_prompt", ""),
                             camera_notes=sd.get("camera_notes"),
@@ -987,6 +1039,71 @@ class JobQueue:
 
     # ─────────────────────────────────────────────────────────────────────
     # Utilities
+    # ─────────────────────────────────────────────────────────────────────
+    # Model Download Job
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _run_model_download_job(
+        self, queued: QueuedJob, cancel_event: Optional[asyncio.Event]
+    ) -> None:
+        """Download a HuggingFace model to the local cache."""
+        import asyncio as _aio
+
+        job = queued.job
+        config = job.generator_config or {}
+
+        # Determine what to download
+        repo_id = config.get("custom_model_repo_id", "").strip()
+        if not repo_id:
+            repo_id = config.get("model_repo_id", "")
+        if not repo_id:
+            raise RuntimeError("No model_repo_id specified for download")
+
+        cache_dir = config.get(
+            "models_cache_dir",
+            str(Path.home() / ".cache" / "xeditor" / "models" / "hf"),
+        )
+
+        progress_cb = self._make_progress_callback(queued, "downloading_model")
+
+        await progress_cb(JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="downloading_model",
+            stage_progress=0.05,
+            overall_progress=0.05,
+            message=f"Starting download of {repo_id}…",
+        ))
+
+        if cancel_event and cancel_event.is_set():
+            raise _aio.CancelledError()
+
+        # Run the blocking download in a thread
+        def _download() -> str:
+            from huggingface_hub import snapshot_download
+            return snapshot_download(
+                repo_id,
+                cache_dir=cache_dir,
+                resume_download=True,
+            )
+
+        loop = _aio.get_running_loop()
+        local_path = await loop.run_in_executor(None, _download)
+
+        if cancel_event and cancel_event.is_set():
+            raise _aio.CancelledError()
+
+        await progress_cb(JobProgressEvent(
+            job_id=job.id,
+            seq=self._next_seq(queued),
+            stage="download_complete",
+            stage_progress=1.0,
+            overall_progress=1.0,
+            message=f"Model downloaded: {repo_id} → {local_path}",
+        ))
+
+        job.artifact_paths.append(local_path)
+
     # ─────────────────────────────────────────────────────────────────────
 
     async def _extract_last_frame(self, video_path: str, output_path: Path) -> Optional[str]:

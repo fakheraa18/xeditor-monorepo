@@ -1,18 +1,18 @@
 <template>
   <q-layout view="hHh LpR fFf">
     <!-- Header Toolbar -->
-    <q-header v-if="projectStore.isOpen" elevated class="bg-dark">
+    <q-header v-if="projectStore.isOpen" elevated class="bg-primary">
       <q-toolbar class="ve-toolbar">
         <q-btn flat dense round icon="home" text-color="white" @click="$router.push('/')">
           <q-tooltip>Home</q-tooltip>
         </q-btn>
-        <q-separator vertical dark class="q-mx-xs" />
+        <q-separator vertical class="q-mx-xs" />
 
         <q-toolbar-title class="text-subtitle1 ellipsis" style="max-width: 200px">
           {{ projectStore.projectName }}
         </q-toolbar-title>
 
-        <q-separator vertical dark class="q-mx-xs" />
+        <q-separator vertical class="q-mx-xs" />
 
         <!-- Workspace tools -->
         <q-btn-group flat class="q-mx-sm">
@@ -74,7 +74,7 @@
           <q-tooltip>Save Now</q-tooltip>
         </q-btn>
 
-        <q-separator vertical dark class="q-mx-xs" />
+        <q-separator vertical class="q-mx-xs" />
 
         <q-btn flat dense round icon="folder_open" text-color="white" @click="toggleLeftDrawer">
           <q-tooltip>Toggle Asset Panel</q-tooltip>
@@ -85,7 +85,7 @@
           round
           icon="view_sidebar"
           text-color="white"
-          :class="{ 'text-primary': rightDrawerOpen }"
+          :class="{ 'text-white': rightDrawerOpen }"
           @click="toggleRightDrawer"
         >
           <q-tooltip>Toggle Properties Panel</q-tooltip>
@@ -103,7 +103,7 @@
       side="left"
       :width="260"
       bordered
-      class="bg-grey-10"
+      class="bg-grey-1"
     >
       <AssetLibraryPanel />
     </q-drawer>
@@ -115,7 +115,7 @@
       side="right"
       :width="360"
       bordered
-      class="bg-grey-10"
+      class="bg-grey-1"
     >
       <PropertiesPanel :active-panel="rightPanel" @update:active-panel="rightPanel = $event" />
     </q-drawer>
@@ -131,7 +131,7 @@
     </q-page-container>
 
     <!-- Footer (Job Status Bar) -->
-    <q-footer v-if="projectStore.isOpen" elevated class="bg-grey-9 ve-footer">
+    <q-footer v-if="projectStore.isOpen" elevated class="bg-grey-3 text-dark ve-footer">
       <GenerationQueuePanel />
     </q-footer>
 
@@ -234,6 +234,6 @@ watch(
 
 .ve-footer {
   height: 80px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 </style>

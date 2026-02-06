@@ -42,6 +42,8 @@ video_editor = [
     "transformers>=4.40.0",
     "accelerate>=0.30.0",
     "torch>=2.3.0",
+    # Model download
+    "huggingface_hub>=0.23.0",
     # Video assembly
     "moviepy>=2.0.0",
     # Image processing

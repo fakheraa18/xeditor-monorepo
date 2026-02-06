@@ -6,7 +6,6 @@
         :caption="section.description"
         :default-opened="!section.default_collapsed"
         dense
-        header-class="text-white"
         class="q-mb-xs"
       >
         <q-card flat class="bg-transparent">
@@ -23,7 +22,6 @@
                   :rules="field.required ? [requiredRule] : []"
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
@@ -38,7 +36,6 @@
                   :rows="3"
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
@@ -54,7 +51,6 @@
                   :step="field.constraints?.step ?? 1"
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
@@ -70,7 +66,6 @@
                   :step="field.constraints?.step ?? 0.1"
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
@@ -79,7 +74,6 @@
                   v-else-if="field.field_type === 'bool'"
                   v-model="values[field.key]"
                   :label="field.label"
-                  dark
                   dense
                   @update:model-value="emitChange"
                 />
@@ -97,7 +91,6 @@
                   map-options
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
@@ -116,18 +109,16 @@
                   use-chips
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
                 <!-- Color picker -->
                 <div v-else-if="field.field_type === 'color'" class="row items-center">
-                  <span class="text-white text-caption q-mr-sm">{{ field.label }}</span>
+                  <span class="text-caption q-mr-sm">{{ field.label }}</span>
                   <q-input
                     v-model="values[field.key] as string"
                     dense
                     outlined
-                    dark
                     style="max-width: 120px"
                     @update:model-value="emitChange"
                   >
@@ -149,7 +140,6 @@
                   :hint="field.description"
                   dense
                   outlined
-                  dark
                   @update:model-value="emitChange"
                 />
 
@@ -163,7 +153,6 @@
                   :rows="4"
                   dense
                   outlined
-                  dark
                   class="json-field"
                   @update:model-value="emitChange"
                 />

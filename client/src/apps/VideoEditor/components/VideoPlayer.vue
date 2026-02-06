@@ -24,29 +24,37 @@
 
     <!-- Transport controls -->
     <div class="player-controls">
-      <q-btn flat dense round icon="skip_previous" color="white" size="sm" @click="seekToStart" />
-      <q-btn flat dense round icon="fast_rewind" color="white" size="sm" @click="seekBackward" />
+      <q-btn flat dense round icon="skip_previous" color="primary" size="sm" @click="seekToStart" />
+      <q-btn flat dense round icon="fast_rewind" color="primary" size="sm" @click="seekBackward" />
       <q-btn
         flat
         dense
         round
         :icon="isPlaying ? 'pause' : 'play_arrow'"
-        color="white"
+        color="primary"
         size="md"
         @click="togglePlay"
       />
-      <q-btn flat dense round icon="fast_forward" color="white" size="sm" @click="seekForward" />
-      <q-btn flat dense round icon="skip_next" color="white" size="sm" @click="seekToEnd" />
+      <q-btn flat dense round icon="fast_forward" color="primary" size="sm" @click="seekForward" />
+      <q-btn flat dense round icon="skip_next" color="primary" size="sm" @click="seekToEnd" />
 
-      <q-separator vertical dark class="q-mx-sm" />
+      <q-separator vertical class="q-mx-sm" />
 
-      <span class="text-white text-caption time-display">
+      <span class="text-dark text-caption time-display">
         {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
       </span>
 
       <q-space />
 
-      <q-btn flat dense round icon="fullscreen" color="white" size="sm" @click="toggleFullscreen" />
+      <q-btn
+        flat
+        dense
+        round
+        icon="fullscreen"
+        color="primary"
+        size="sm"
+        @click="toggleFullscreen"
+      />
     </div>
   </div>
 </template>
@@ -196,8 +204,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   padding: 0 8px;
-  background: rgba(0, 0, 0, 0.6);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .time-display {

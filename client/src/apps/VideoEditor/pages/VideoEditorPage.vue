@@ -91,7 +91,7 @@ function goHome(): void {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 120px); // header 40px + footer 80px
-  background: #1a1a2e;
+  background: #f5f5f5;
 }
 
 .player-area {
@@ -100,15 +100,15 @@ function goHome(): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0f0f1a;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #e0e0e0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
 .timeline-area {
   height: 280px;
   min-height: 200px;
-  background: #16213e;
+  background: #ffffff;
   overflow: hidden;
 }
 </style>
