@@ -89,6 +89,14 @@
           >{{ formatTime(currentTime) }} / {{ formatTime(timeline.total_duration) }}</span
         >
         <q-space />
+        <q-btn
+          flat
+          icon="delete_sweep"
+          label="Clear All"
+          color="negative"
+          :disable="timeline.clips.length === 0"
+          @click="clearAllClips"
+        />
         <q-btn flat icon="add" label="Add Clips from Scenes" @click="addClipFromScene" />
         <q-btn-dropdown flat icon="auto_awesome" label="Generate" color="primary">
           <q-list>
@@ -226,6 +234,13 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function clearAllClips(): void {
+  if (timeline.value.clips.length === 0) return;
+  if (!confirm('Clear all clips from the timeline? This cannot be undone.')) return;
+  projectStore.clearAllClips();
+  selectedClipId.value = null;
+}
+
 function addClipFromScene(): void {
   const scenes = story.value.scenes;
   if (scenes.length === 0) {
@@ -237,7 +252,7 @@ function addClipFromScene(): void {
   let startTime = timeline.value.total_duration;
   for (const scene of scenes) {
     projectStore.addClip({
-      track_id: 'main',
+      track_id: 'video_main',
       start_time: startTime,
       duration: scene.duration_estimate || 5,
       source_type: 'placeholder',
@@ -382,29 +397,40 @@ async function exportVideo(): Promise<void> {
   }
 
   &.status-draft {
-    background: var(--q-grey-5);
+    background: #e0e0e0;
+    color: #333333;
+
+    .clip-content {
+      color: #333333;
+    }
   }
 
   &.status-generating {
     background: var(--q-info);
+    color: white;
   }
 
   &.status-done {
     background: var(--q-positive);
+    color: white;
   }
 
   &.status-error {
     background: var(--q-negative);
+    color: white;
   }
 }
 
 .clip-content {
   padding: 4px 8px;
-  color: white;
+  color: inherit;
   font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
 }
 
 .clip-label {

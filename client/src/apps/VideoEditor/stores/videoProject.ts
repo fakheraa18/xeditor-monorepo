@@ -501,7 +501,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     if (!project.value) return;
 
     const scenesMap = new Map(project.value.story.scenes.map((s) => [s.id, s]));
-    project.value.story.scenes = sceneIds
+    const newScenes = sceneIds
       .map((id, index) => {
         const scene = scenesMap.get(id);
         if (scene) {
@@ -512,8 +512,68 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
       })
       .filter((s): s is StoryScene => s !== null);
 
+    project.value.story.scenes = newScenes;
+
+    // Sync timeline clips to new scene order
+    syncTimelineToSceneOrder();
+
     project.value.story.updated_at = Date.now() / 1000;
     scheduleAutosave();
+  }
+
+  function syncTimelineToSceneOrder(): void {
+    if (!project.value) return;
+
+    const timeline = project.value.timeline;
+    const scenes = project.value.story.scenes;
+
+    // We only sync clips that are linked to scenes
+    // Clips not linked to scenes (like background music) might need different handling
+    // but for now we'll focus on scene-linked clips.
+
+    let currentStartTime = 0;
+    const sceneDurations = new Map<string, number>();
+
+    // First, calculate the duration of each scene based on its clips
+    // or use the duration_estimate if no clips exist yet.
+    for (const scene of scenes) {
+      const sceneClips = timeline.clips.filter((c) => c.scene_id === scene.id);
+      let sceneDuration = scene.duration_estimate || 5;
+
+      if (sceneClips.length > 0) {
+        // If there are clips, the scene duration is the max end time of its clips
+        // relative to the scene's start. This is tricky if clips are already moved.
+        // A better way: use the sum of durations of clips if they are sequential,
+        // or just use the duration_estimate as the "slot" size.
+        // For now, let's use the max duration of clips assigned to this scene.
+        sceneDuration = Math.max(...sceneClips.map((c) => c.duration), sceneDuration);
+      }
+      sceneDurations.set(scene.id, sceneDuration);
+    }
+
+    // Now update start times based on the new scene order
+    for (const scene of scenes) {
+      const sceneId = scene.id;
+      const sceneClips = timeline.clips.filter((c) => c.scene_id === sceneId);
+
+      // Update all clips for this scene to start at the current cumulative time
+      // Note: This assumes all clips in a scene start at the same time (e.g. video + audio)
+      // If they are offset within the scene, we'd need to preserve that offset.
+      for (const clip of sceneClips) {
+        // Preserve internal offset if we ever support it, but for now they start at scene start
+        clip.start_time = currentStartTime;
+      }
+
+      // Update scene instances if they exist
+      const instance = timeline.scene_instances.find((si) => si.scene_id === sceneId);
+      if (instance) {
+        instance.start_time = currentStartTime;
+      }
+
+      currentStartTime += sceneDurations.get(sceneId) || 5;
+    }
+
+    recalculateTimelineDuration();
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -571,6 +631,15 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     if (!project.value) return;
 
     project.value.timeline.clips = project.value.timeline.clips.filter((c) => c.id !== id);
+    recalculateTimelineDuration();
+    scheduleAutosave();
+  }
+
+  function clearAllClips(): void {
+    if (!project.value) return;
+
+    project.value.timeline.clips = [];
+    project.value.timeline.scene_instances = [];
     recalculateTimelineDuration();
     scheduleAutosave();
   }
@@ -666,6 +735,8 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     addClip,
     updateClip,
     removeClip,
+    clearAllClips,
+    syncTimelineToSceneOrder,
 
     // Autosave
     markDirty,

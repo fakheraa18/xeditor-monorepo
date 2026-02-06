@@ -61,9 +61,7 @@
               @update:model-value="onGeneratorConfigChange"
             />
           </template>
-          <div v-else class="text-grey-7 text-caption">
-            Loading generator settings...
-          </div>
+          <div v-else class="text-grey-7 text-caption">Loading generator settings...</div>
 
           <q-separator class="q-my-md" />
 
@@ -179,7 +177,7 @@
 
           <div class="row q-gutter-md">
             <!-- Visual Description -->
-            <div class="col-6">
+            <div class="col-12">
               <div class="text-caption text-grey-7 q-mb-xs">Visual Description</div>
               <q-input
                 v-model="scene.description.visual_prompt"
@@ -205,7 +203,7 @@
             </div>
 
             <!-- Script/Dialog -->
-            <div class="col-6">
+            <div class="col-12">
               <div class="text-caption text-grey-7 q-mb-xs">Script / Dialog</div>
               <div
                 v-for="(line, lineIndex) in scene.script_lines"
@@ -343,10 +341,7 @@ const activeProgress = computed(() => {
   const progress = jobsStore.activeJobProgress;
   if (!progress) return null;
   const activeJob = jobsStore.activeJob;
-  if (
-    activeJob &&
-    (activeJob.type === 'script_generate' || activeJob.type === 'model_download')
-  ) {
+  if (activeJob && (activeJob.type === 'script_generate' || activeJob.type === 'model_download')) {
     return progress;
   }
   return null;
