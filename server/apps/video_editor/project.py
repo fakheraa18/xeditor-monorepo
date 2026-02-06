@@ -517,6 +517,12 @@ def get_video_project_manager() -> VideoProjectManager:
     return _project_manager
 
 
+def get_open_project(project_id: str) -> Optional[VideoProject]:
+    """Convenience function to get an open project by ID."""
+    manager = get_video_project_manager()
+    return manager.get_project(project_id)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # RPC Handlers
 # ─────────────────────────────────────────────────────────────────────────────

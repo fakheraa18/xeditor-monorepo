@@ -83,7 +83,7 @@ const completedJobs = computed(() => jobsStore.completedJobs);
 
 function getJobIcon(type: JobType): string {
   switch (type) {
-    case 'story_generate':
+    case 'script_generate':
       return 'auto_stories';
     case 'tts_generate':
       return 'record_voice_over';
@@ -102,7 +102,7 @@ function getJobIcon(type: JobType): string {
 
 function getJobLabel(job: Job): string {
   switch (job.type) {
-    case 'story_generate':
+    case 'script_generate':
       return 'Story';
     case 'tts_generate':
       return `Audio (${job.clip_ids.length})`;

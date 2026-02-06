@@ -14,7 +14,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType
 
 
 class CoquiXTTSGenerator(TTSGenerator):
@@ -42,7 +42,10 @@ class CoquiXTTSGenerator(TTSGenerator):
             title="Coqui XTTS v2 (Multi-Language, Voice Cloning)",
             description="High-quality TTS with voice cloning support. Supports 17+ languages.",
             version="1.0.0",
-            generator_type="tts",
+            generator_type=GeneratorType.TTS,
+            model_family="coqui-xtts",
+            produces_audio=True,
+            produces_video=False,
             vram_gb_min=2.0,
             vram_gb_recommended=4.0,
             ram_gb_min=8.0,

@@ -14,7 +14,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType
 
 
 # Default system prompt for story generation
@@ -73,7 +73,7 @@ class StoryLLMGenerator(LLMGenerator):
             title="Story Generator (LLM)",
             description="Generate structured video stories using any LLM provider.",
             version="1.0.0",
-            generator_type="llm",
+            generator_type=GeneratorType.LLM,
             vram_gb_min=0.0,  # Uses API or separate process
             vram_gb_recommended=0.0,
             ram_gb_min=1.0,

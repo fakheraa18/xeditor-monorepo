@@ -13,7 +13,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType
 
 
 class SVDI2VGenerator(VideoGenerator):
@@ -41,7 +41,7 @@ class SVDI2VGenerator(VideoGenerator):
             title="Stable Video Diffusion (I2V)",
             description="High-quality image-to-video using SVD. ~2 second clips.",
             version="1.0.0",
-            generator_type="i2v",
+            generator_type=GeneratorType.I2V,
             vram_gb_min=8.0,
             vram_gb_recommended=12.0,
             ram_gb_min=12.0,

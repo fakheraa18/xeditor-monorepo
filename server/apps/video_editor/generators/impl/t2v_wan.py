@@ -13,7 +13,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType
 
 
 class WanT2VGenerator(VideoGenerator):
@@ -41,7 +41,8 @@ class WanT2VGenerator(VideoGenerator):
             title="Wan 2.1 T2V (1.3B, Fast)",
             description="Efficient text-to-video. ~5 second clips at 480p.",
             version="1.0.0",
-            generator_type="t2v",
+            generator_type=GeneratorType.T2V,
+            model_family="wan2.1",
             vram_gb_min=15.0,
             vram_gb_recommended=16.0,
             ram_gb_min=12.0,

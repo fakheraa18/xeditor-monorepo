@@ -80,6 +80,32 @@
       </q-card-section>
     </q-card>
 
+    <!-- Audio Mixing -->
+    <q-card flat bordered class="q-mb-md">
+      <q-card-section>
+        <div class="text-subtitle1 q-mb-sm">Audio Mix</div>
+        <div class="text-caption text-grey q-mb-md">
+          Adjust volume levels for each audio track in the final export.
+        </div>
+
+        <div v-for="track in audioTracks" :key="track.id" class="row items-center q-mb-sm">
+          <q-icon :name="trackIcon(track.type)" size="20px" class="q-mr-sm" />
+          <span class="text-body2 col-2">{{ track.name }}</span>
+          <q-slider
+            v-model="trackVolumes[track.id]"
+            :min="0"
+            :max="150"
+            :step="5"
+            label
+            :label-value="`${trackVolumes[track.id]}%`"
+            color="primary"
+            class="col"
+          />
+          <q-toggle v-model="trackEnabled[track.id]" dense class="q-ml-sm" />
+        </div>
+      </q-card-section>
+    </q-card>
+
     <!-- Export Actions -->
     <q-card flat bordered>
       <q-card-section>
@@ -133,12 +159,47 @@ import { isClipAudioStale, isClipVideoStale } from '../types';
 const projectStore = useVideoProjectStore();
 const jobsStore = useVideoJobsStore();
 
+import type { TrackType } from '../types';
+
 const timeline = computed(() => projectStore.timeline);
 
 // Export settings
 const exportFormat = ref('mp4');
 const exportQuality = ref('high');
 const outputFilename = ref('my_video');
+
+// Audio mix
+const audioTracks = computed(() =>
+  timeline.value.tracks.filter((t) => t.type === 'audio' || t.type === 'music' || t.type === 'sfx'),
+);
+
+const trackVolumes = ref<Record<string, number>>({
+  audio_dialog: 100,
+  audio_music: 60,
+});
+const trackEnabled = ref<Record<string, boolean>>({
+  audio_dialog: true,
+  audio_music: true,
+});
+
+// Initialize volumes for all tracks
+audioTracks.value.forEach((t) => {
+  if (!(t.id in trackVolumes.value)) trackVolumes.value[t.id] = 100;
+  if (!(t.id in trackEnabled.value)) trackEnabled.value[t.id] = true;
+});
+
+function trackIcon(type: TrackType): string {
+  switch (type) {
+    case 'audio':
+      return 'record_voice_over';
+    case 'music':
+      return 'music_note';
+    case 'sfx':
+      return 'surround_sound';
+    default:
+      return 'volume_up';
+  }
+}
 
 const formatOptions = [
   { label: 'MP4 (H.264)', value: 'mp4' },

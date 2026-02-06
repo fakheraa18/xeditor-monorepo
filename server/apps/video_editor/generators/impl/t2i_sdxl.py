@@ -13,7 +13,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType, ShapeConstraints
 
 
 class SDXLT2IGenerator(ImageGenerator):
@@ -43,7 +43,7 @@ class SDXLT2IGenerator(ImageGenerator):
             title="SDXL + Refiner (High Quality)",
             description="Stable Diffusion XL with optional refiner for high-quality image generation.",
             version="1.0.0",
-            generator_type="t2i",
+            generator_type=GeneratorType.T2I,
             vram_gb_min=10.0,
             vram_gb_recommended=16.0,
             ram_gb_min=16.0,
@@ -53,6 +53,7 @@ class SDXLT2IGenerator(ImageGenerator):
             max_subjects=2,
             accepts_text_prompt=True,
             accepts_negative_prompt=True,
+            model_family="sdxl",
             valid_resolutions=[
                 (1024, 1024),  # Square
                 (1152, 896),   # Landscape
@@ -60,7 +61,12 @@ class SDXLT2IGenerator(ImageGenerator):
                 (1344, 768),   # Wide landscape
                 (768, 1344),   # Tall portrait
             ],
-            resolution_must_be_divisible_by=8,
+            best_resolutions=[(1024, 1024), (1152, 896), (896, 1152)],
+            shape_constraints=ShapeConstraints(
+                width_divisible_by=8,
+                height_divisible_by=8,
+            ),
+            produces_video=False,
         )
 
     async def load(self) -> None:

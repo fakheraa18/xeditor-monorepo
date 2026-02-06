@@ -17,7 +17,7 @@ import type {
   Timeline,
   RecentProject,
   CharacterAsset,
-  PropAsset,
+  ProductAsset,
   VoiceAsset,
   StoryScene,
   TimelineClip,
@@ -408,18 +408,18 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     scheduleAutosave();
   }
 
-  function addProp(prop: Omit<PropAsset, 'id' | 'created_at' | 'updated_at'>): void {
+  function addProduct(product: Omit<ProductAsset, 'id' | 'created_at' | 'updated_at'>): void {
     if (!project.value) return;
 
     const now = Date.now() / 1000;
-    const newProp: PropAsset = {
-      ...prop,
+    const newProduct: ProductAsset = {
+      ...product,
       id: crypto.randomUUID(),
       created_at: now,
       updated_at: now,
     };
 
-    project.value.library.props.push(newProp);
+    project.value.library.products.push(newProduct);
     scheduleAutosave();
   }
 
@@ -651,7 +651,7 @@ export const useVideoProjectStore = defineStore('videoProject', () => {
     addCharacter,
     updateCharacter,
     removeCharacter,
-    addProp,
+    addProduct,
     addVoice,
 
     // Story

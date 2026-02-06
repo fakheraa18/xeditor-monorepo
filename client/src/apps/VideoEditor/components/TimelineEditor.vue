@@ -243,6 +243,7 @@ function addClipFromScene(): void {
       source_type: 'placeholder',
       scene_id: scene.id,
       status: 'draft',
+      script_line_ids: [],
     });
     startTime += scene.duration_estimate || 5;
   }

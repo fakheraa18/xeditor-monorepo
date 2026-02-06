@@ -13,7 +13,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType
 
 
 class ZeroscopeT2VGenerator(VideoGenerator):
@@ -42,7 +42,8 @@ class ZeroscopeT2VGenerator(VideoGenerator):
             title="Zeroscope v2 (T2V + Upscale)",
             description="Text-to-video with HD upscaling. ~2 second clips.",
             version="1.0.0",
-            generator_type="t2v",
+            generator_type=GeneratorType.T2V,
+            model_family="zeroscope",
             vram_gb_min=8.0,
             vram_gb_recommended=12.0,
             ram_gb_min=12.0,

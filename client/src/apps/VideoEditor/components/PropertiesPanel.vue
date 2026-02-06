@@ -199,11 +199,15 @@ function updateGenerationMode(value: string): void {
   const currentSpec = selectedClip.value.generation_spec || {
     mode: 'prompt_only',
     character_refs: [],
+    product_refs: [],
+    lora_refs: [],
   };
   projectStore.updateClip(selectedClip.value.id, {
     generation_spec: {
       ...currentSpec,
       mode: value as 'prompt_only' | 'i2v' | 'flf' | 't2v',
+      product_refs: currentSpec.product_refs || [],
+      lora_refs: currentSpec.lora_refs || [],
     },
   });
 }
@@ -213,11 +217,15 @@ function updatePrompt(value: string | number | null): void {
   const currentSpec = selectedClip.value.generation_spec || {
     mode: 'prompt_only',
     character_refs: [],
+    product_refs: [],
+    lora_refs: [],
   };
   projectStore.updateClip(selectedClip.value.id, {
     generation_spec: {
       ...currentSpec,
       prompt: String(value || ''),
+      product_refs: currentSpec.product_refs || [],
+      lora_refs: currentSpec.lora_refs || [],
     },
   });
 }

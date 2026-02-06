@@ -15,7 +15,7 @@ from apps.video_editor.generators.base import (
     ProgressCallback,
     JobProgressEvent,
 )
-from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig
+from apps.video_editor.models import GeneratorCapabilities, GeneratorConfig, GeneratorType
 
 
 class SlideshowI2VGenerator(VideoGenerator):
@@ -43,7 +43,7 @@ class SlideshowI2VGenerator(VideoGenerator):
             title="Slideshow (Static Image)",
             description="Creates video from static image. Very fast, no GPU required.",
             version="1.0.0",
-            generator_type="i2v",
+            generator_type=GeneratorType.I2V,
             vram_gb_min=0.1,  # Virtually no VRAM needed
             vram_gb_recommended=0.5,
             ram_gb_min=1.0,

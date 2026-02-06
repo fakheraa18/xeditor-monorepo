@@ -1,18 +1,19 @@
 """
-Video Editor Pydantic Models - Single Source of Truth
+Video Editor Pydantic Models - Single Source of Truth (v2)
 
-This module defines all data models for the video editor, including:
+Complete redesign for the generator-driven AI video editor.
+All data models for:
+- Generator capabilities, UI schemas, shape constraints
 - Project settings and state
-- Asset library (characters, props, voices)
+- Asset library (characters, props/products, voices, control videos)
 - Story and scenes
-- Timeline and clips
+- Timeline (multi-track, scene instances, clips)
 - Jobs and generation state
-- Generator capabilities
 """
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from pydantic import BaseModel, Field
 import uuid
 
@@ -27,12 +28,21 @@ class Orientation(str, Enum):
     SQUARE = "square"
 
 
+class TrackType(str, Enum):
+    VIDEO = "video"
+    AUDIO = "audio"
+    MUSIC = "music"
+    SFX = "sfx"
+    OVERLAY = "overlay"
+
+
 class ClipSourceType(str, Enum):
     GENERATED_VIDEO = "generated_video"
     GENERATED_IMAGE = "generated_image"
+    GENERATED_AUDIO = "generated_audio"
+    GENERATED_AV = "generated_av"  # Joint audio+video
     IMPORTED = "imported"
     PLACEHOLDER = "placeholder"
-    AUDIO = "audio"
 
 
 class ClipStatus(str, Enum):
@@ -42,13 +52,15 @@ class ClipStatus(str, Enum):
     GENERATING = "generating"
     DONE = "done"
     ERROR = "error"
+    STALE = "stale"  # Upstream changed, needs regeneration
 
 
 class GenerationMode(str, Enum):
     PROMPT_ONLY = "prompt_only"
-    I2V = "i2v"  # Image to Video
-    FLF = "flf"  # First + Last Frame interpolation
-    T2V = "t2v"  # Text to Video
+    I2V = "i2v"   # Image to Video
+    FLF = "flf"   # First + Last Frame interpolation
+    T2V = "t2v"   # Text to Video
+    AV = "av"     # Joint Audio+Video
 
 
 class JobStatus(str, Enum):
@@ -61,21 +73,284 @@ class JobStatus(str, Enum):
 
 
 class JobType(str, Enum):
-    STORY_GENERATE = "story_generate"
+    SCRIPT_GENERATE = "script_generate"
     TTS_GENERATE = "tts_generate"
     IMAGE_GENERATE = "image_generate"
     VIDEO_GENERATE = "video_generate"
+    AV_GENERATE = "av_generate"       # Joint audio+video
     MUSIC_GENERATE = "music_generate"
+    SFX_GENERATE = "sfx_generate"
+    LIPSYNC = "lipsync"
+    SCENE_PLAN = "scene_plan"         # Audio-first clip splitting
     FINAL_MERGE = "final_merge"
+    MODEL_DOWNLOAD = "model_download"
 
 
 class RegenerationMode(str, Enum):
     PREVIEW_AUDIO = "preview_audio"
     REGEN_AUDIO = "regen_audio"
     REGEN_VIDEO = "regen_video"
+    REGEN_AV = "regen_av"
     REGEN_AUDIO_VIDEO = "regen_audio_video"
     REGEN_CHAIN = "regen_chain"
     REGEN_ALL_STALE = "regen_all_stale"
+
+
+class GeneratorType(str, Enum):
+    LLM = "llm"
+    TTS = "tts"
+    T2I = "t2i"
+    I2V = "i2v"
+    T2V = "t2v"
+    AV = "av"           # Joint audio+video (e.g. LTX-2)
+    MUSIC = "music"
+    SFX = "sfx"
+    LIPSYNC = "lipsync"
+    UPSCALER = "upscaler"
+
+
+class AssetType(str, Enum):
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+    CHARACTER = "character"
+    PRODUCT = "product"
+    VOICE = "voice"
+    CONTROL_VIDEO = "control_video"
+    LORA = "lora"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Generator UI Schema (auto-rendered parameter panels)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class UiFieldType(str, Enum):
+    STRING = "string"
+    TEXT = "text"           # Multi-line text
+    INT = "int"
+    FLOAT = "float"
+    BOOL = "bool"
+    SELECT = "select"
+    MULTISELECT = "multiselect"
+    ASSET_REF = "asset_ref"       # Single asset reference (image/video/audio)
+    ASSET_REFS = "asset_refs"     # Multiple asset references (characters/products)
+    COLOR = "color"
+    JSON = "json"
+
+
+class UiFieldOption(BaseModel):
+    """A selectable option for select/multiselect fields."""
+    value: str
+    label: str
+    description: Optional[str] = None
+
+
+class UiFieldConstraints(BaseModel):
+    """Constraints for a UI field value."""
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    min_length: Optional[int] = None
+    max_length: Optional[int] = None
+    step: Optional[float] = None
+    pattern: Optional[str] = None          # Regex for string fields
+    allowed_asset_types: Optional[List[str]] = None  # For asset_ref fields
+
+
+class UiField(BaseModel):
+    """A single user-configurable parameter exposed by a generator."""
+    key: str                    # Programmatic key (maps to generator_config.custom)
+    label: str                  # Display label
+    field_type: UiFieldType
+    default: Optional[Any] = None
+    required: bool = False
+    description: Optional[str] = None
+    placeholder: Optional[str] = None
+    options: Optional[List[UiFieldOption]] = None   # For select/multiselect
+    constraints: Optional[UiFieldConstraints] = None
+    depends_on: Optional[str] = None  # Show only when another field has a truthy value
+    group: Optional[str] = None       # Group within a section
+
+
+class UiSection(BaseModel):
+    """A labeled section in the generator's parameter panel."""
+    key: str
+    label: str
+    description: Optional[str] = None
+    collapsible: bool = True
+    default_collapsed: bool = False
+    fields: List[UiField] = Field(default_factory=list)
+
+
+class GeneratorUiSchema(BaseModel):
+    """Complete UI schema for a generator's parameter panel."""
+    sections: List[UiSection] = Field(default_factory=list)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Generator Shape Constraints
+# ─────────────────────────────────────────────────────────────────────────────
+
+class FrameCountRule(BaseModel):
+    """
+    Describes how num_frames must be computed.
+    E.g. LTX-2: num_frames must be (k * 8) + 1 for some integer k.
+    """
+    divisor: int = 1                   # num_frames must be divisible by this...
+    offset: int = 0                    # ...plus this offset
+    # Convenience: valid if (num_frames - offset) % divisor == 0
+    min_frames: Optional[int] = None
+    max_frames: Optional[int] = None
+
+
+class ShapeConstraints(BaseModel):
+    """Hard constraints on resolution, frames, FPS for a generator."""
+    width_divisible_by: int = 8
+    height_divisible_by: int = 8
+    min_width: Optional[int] = None
+    max_width: Optional[int] = None
+    min_height: Optional[int] = None
+    max_height: Optional[int] = None
+    frame_count_rule: Optional[FrameCountRule] = None
+    min_fps: Optional[int] = None
+    max_fps: Optional[int] = None
+    supported_fps: Optional[List[int]] = None  # If only specific FPS values work
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Generator Installable (model download descriptors)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ModelInstallable(BaseModel):
+    """A model file that can be downloaded for a generator."""
+    name: str
+    url: str                       # HuggingFace, Civitai, or direct URL
+    filename: Optional[str] = None
+    size_gb: Optional[float] = None
+    checksum_sha256: Optional[str] = None
+    license: Optional[str] = None
+    license_url: Optional[str] = None
+    required: bool = True          # False = optional (e.g. upscaler LoRA)
+    variant: Optional[str] = None  # e.g. "fp8", "fp4", "distilled"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Generator Capabilities (for plugin system)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GeneratorCapabilities(BaseModel):
+    """Capabilities declared by a generator plugin."""
+    # Identity
+    id: str
+    title: str
+    description: Optional[str] = None
+    version: str = "1.0.0"
+    author: Optional[str] = None
+    is_builtin: bool = True          # False = user-uploaded custom generator
+
+    # Generator type
+    generator_type: GeneratorType
+
+    # Resource requirements
+    vram_gb_min: float = 0.0
+    vram_gb_recommended: float = 0.0
+    ram_gb_min: float = 0.0
+
+    # Model family & LoRA
+    model_family: Optional[str] = None       # e.g. "sdxl", "wan2.1", "ltx-2"
+    base_model_family: Optional[str] = None  # For LoRA compatibility
+    supports_lora: bool = False
+    max_loras: int = 0
+    allowed_lora_families: List[str] = Field(default_factory=list)
+
+    # Subjects policy
+    accepts_characters_count: int = 0   # 0 = does not accept character refs
+    accepts_products_count: int = 0     # 0 = does not accept product refs
+
+    # Format support
+    supported_formats: List[str] = Field(default_factory=list)
+
+    # Prompt support
+    accepts_text_prompt: bool = True
+    accepts_negative_prompt: bool = False
+    accepts_motion_prompt: bool = False
+    accepts_camera_control: bool = False
+
+    # Video capabilities
+    supports_i2v: bool = False
+    supports_t2v: bool = False
+    supports_flf: bool = False              # First+last frame interpolation
+    supports_preview_mode: bool = False
+    supports_control_video: bool = False
+    supported_control_types: List[str] = Field(default_factory=list)  # pose/depth/canny
+
+    # Audio output capabilities (for AV generators)
+    produces_audio: bool = False           # True if generator outputs audio too
+    produces_video: bool = True            # True for video/AV generators
+    supports_audio_input: bool = False     # Can take audio as conditioning input
+
+    # Resolution & shape constraints
+    best_resolutions: List[Tuple[int, int]] = Field(default_factory=list)
+    valid_resolutions: List[Tuple[int, int]] = Field(default_factory=list)
+    shape_constraints: ShapeConstraints = Field(default_factory=ShapeConstraints)
+
+    # Duration limits
+    max_duration_seconds: float = 5.0
+    max_frames: int = 120
+
+    # TTS-specific
+    supports_voice_cloning: bool = False
+    supported_languages: List[str] = Field(default_factory=lambda: ["en"])
+    max_audio_seconds: Optional[float] = None
+
+    # Audio generation
+    supports_music: bool = False
+    supports_sfx: bool = False
+    supports_effects: bool = False
+
+    # LipSync
+    supports_lipsync: bool = False
+    supports_talking_head: bool = False
+
+    # IP-Adapter / style
+    supports_ip_adapter: bool = False
+    max_subjects: int = 1
+
+    # LLM-specific
+    max_context_tokens: int = 0
+    supports_streaming: bool = False
+
+    # Upscaler
+    supported_scale_factors: List[float] = Field(default_factory=list)
+
+    # UI schema (auto-rendered parameters)
+    ui_schema: GeneratorUiSchema = Field(default_factory=GeneratorUiSchema)
+
+    # Model downloads
+    installables: List[ModelInstallable] = Field(default_factory=list)
+
+    # Environment / license
+    license: Optional[str] = None
+    license_url: Optional[str] = None
+    requires_acknowledgement: bool = False  # Must user accept license before download?
+    python_version_min: Optional[str] = None
+    cuda_version_min: Optional[str] = None
+    isolated_runtime: bool = False  # Run in separate uv env / subprocess?
+
+
+class GeneratorConfig(BaseModel):
+    """User-configurable settings for a generator instance."""
+    generator_id: str
+    model_path: Optional[str] = None   # Local model path
+    api_key: Optional[str] = None      # For API-based generators
+    api_base_url: Optional[str] = None
+
+    # Common settings
+    seed: Optional[int] = None
+    steps: Optional[int] = None
+    cfg_scale: Optional[float] = None
+
+    # Generator-specific settings (from UI schema)
+    custom: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,7 +382,7 @@ CANVAS_PRESETS: Dict[str, CanvasPreset] = {
 
 class CanvasSettings(BaseModel):
     """Canvas/video settings for the project."""
-    preset: Optional[str] = None  # Key from CANVAS_PRESETS or None for custom
+    preset: Optional[str] = None
     width: int = 1920
     height: int = 1080
     fps: int = 30
@@ -116,20 +391,25 @@ class CanvasSettings(BaseModel):
 
 class DefaultGeneratorSelections(BaseModel):
     """Default model/generator selections for the project."""
-    story_llm: Optional[str] = None  # Generator ID for story generation
-    tts: Optional[str] = None  # Generator ID for TTS
-    t2i: Optional[str] = None  # Generator ID for text-to-image
-    i2v: Optional[str] = None  # Generator ID for image-to-video
-    t2v: Optional[str] = None  # Generator ID for text-to-video
-    music: Optional[str] = None  # Generator ID for music/SFX
-    upscaler: Optional[str] = None  # Generator ID for upscaling
+    story_llm: Optional[str] = None
+    tts: Optional[str] = None
+    t2i: Optional[str] = None
+    i2v: Optional[str] = None
+    t2v: Optional[str] = None
+    av: Optional[str] = None       # Joint audio+video
+    music: Optional[str] = None
+    sfx: Optional[str] = None
+    lipsync: Optional[str] = None
+    upscaler: Optional[str] = None
 
 
 class ProjectSettings(BaseModel):
     """Project-level settings."""
-    vram_target_gb: float = 24.0  # Target VRAM in GB (e.g., 24 for RTX 4090)
+    vram_target_gb: float = 24.0
     canvas: CanvasSettings = Field(default_factory=CanvasSettings)
     default_generators: DefaultGeneratorSelections = Field(default_factory=DefaultGeneratorSelections)
+    description: Optional[str] = None
+    genre: Optional[str] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -137,33 +417,39 @@ class ProjectSettings(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class AssetRef(BaseModel):
-    """Reference to an asset by ID."""
+    """Reference to an asset by ID and type."""
     asset_id: str
-    asset_type: str  # "character", "prop", "voice", "image", "video", "audio"
+    asset_type: AssetType
 
 
 class CharacterAsset(BaseModel):
     """Character definition in the asset library."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    code: str  # Short code for referencing in scripts
+    code: str                           # Short code for referencing in scripts
     description: Optional[str] = None
-    image_path: Optional[str] = None  # Relative path within project
-    voice_sample_path: Optional[str] = None  # Voice sample for TTS cloning
-    lora_path: Optional[str] = None  # Optional LoRA for this character
-    style_hints: Optional[str] = None  # Style description for generation
+    role: Optional[str] = None          # e.g. "protagonist", "narrator"
+    image_path: Optional[str] = None    # Primary/default image (relative)
+    pose_images: Dict[str, str] = Field(default_factory=dict)  # pose_name -> relative path
+    voice_sample_path: Optional[str] = None
+    voice_id: Optional[str] = None      # Reference to VoiceAsset
+    lora_path: Optional[str] = None
+    lora_trigger_word: Optional[str] = None
+    style_hints: Optional[str] = None
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     updated_at: float = Field(default_factory=lambda: datetime.now().timestamp())
 
 
-class PropAsset(BaseModel):
-    """Prop/background asset in the library."""
+class ProductAsset(BaseModel):
+    """Product/prop asset in the library."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    code: str  # Short code for referencing
+    code: str
     description: Optional[str] = None
     image_path: Optional[str] = None
-    category: Optional[str] = None  # "background", "object", "effect", etc.
+    category: Optional[str] = None  # "background", "object", "prop", "effect"
+    lora_path: Optional[str] = None
+    lora_trigger_word: Optional[str] = None
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     updated_at: float = Field(default_factory=lambda: datetime.now().timestamp())
 
@@ -173,10 +459,10 @@ class VoiceAsset(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     code: str
-    sample_path: str  # Path to voice sample
+    sample_path: str               # Path to voice sample
     description: Optional[str] = None
     language: str = "en"
-    gender: Optional[str] = None  # "male", "female", "neutral"
+    gender: Optional[str] = None   # "male", "female", "neutral"
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     updated_at: float = Field(default_factory=lambda: datetime.now().timestamp())
 
@@ -184,23 +470,36 @@ class VoiceAsset(BaseModel):
 class GeneratedAsset(BaseModel):
     """A generated image/video/audio asset."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    asset_type: str  # "image", "video", "audio"
-    path: str  # Relative path within project
+    asset_type: AssetType
+    path: str                            # Relative path within project
     source_prompt: Optional[str] = None
     generator_id: Optional[str] = None
     generator_config: Optional[Dict[str, Any]] = None
     width: Optional[int] = None
     height: Optional[int] = None
     duration_seconds: Optional[float] = None
+    fps: Optional[float] = None
+    sample_rate: Optional[int] = None
+    seed: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
+
+
+class AssetFolder(BaseModel):
+    """User-created folder for organizing assets."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    parent_id: Optional[str] = None     # None = root
+    asset_type: Optional[AssetType] = None  # Filter type, or None for mixed
 
 
 class AssetLibrary(BaseModel):
     """Complete asset library for a project."""
     characters: List[CharacterAsset] = Field(default_factory=list)
-    props: List[PropAsset] = Field(default_factory=list)
+    products: List[ProductAsset] = Field(default_factory=list)
     voices: List[VoiceAsset] = Field(default_factory=list)
     generated: List[GeneratedAsset] = Field(default_factory=list)
+    folders: List[AssetFolder] = Field(default_factory=list)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -209,25 +508,31 @@ class AssetLibrary(BaseModel):
 
 class ScriptLine(BaseModel):
     """A single line of dialog/narration in a script."""
-    character_id: Optional[str] = None  # None = narrator
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    character_id: Optional[str] = None    # None = narrator
     text: str
-    emotion_hint: Optional[str] = None  # "happy", "angry", "whisper", etc.
+    emotion_hint: Optional[str] = None    # "happy", "angry", "whisper", etc.
     voice_override: Optional[str] = None  # Override voice for this line
-    duration_hint: Optional[float] = None  # Suggested duration in seconds
-
-
-class ClipScript(BaseModel):
-    """Script content for a single clip."""
-    lines: List[ScriptLine] = Field(default_factory=list)
+    duration_hint: Optional[float] = None # Suggested duration in seconds
 
 
 class SceneDescription(BaseModel):
-    """Visual description of a scene."""
-    visual_prompt: str  # Prompt for image/video generation
+    """Visual description and generation parameters for a scene."""
+    visual_prompt: str = ""
     negative_prompt: Optional[str] = None
-    motion_prompt: Optional[str] = None  # For video, describes motion
-    camera_notes: Optional[str] = None  # Camera angle, movement
-    style_ref: Optional[AssetRef] = None  # Style reference image
+    motion_prompt: Optional[str] = None
+    camera_notes: Optional[str] = None
+    style_ref: Optional[AssetRef] = None
+    control_video_ref: Optional[AssetRef] = None  # For pose/motion control
+
+
+class SceneGenerationOverrides(BaseModel):
+    """Per-scene overrides for generator selections and LoRA."""
+    video_generator_id: Optional[str] = None
+    audio_generator_id: Optional[str] = None
+    av_generator_id: Optional[str] = None
+    lora_refs: List[AssetRef] = Field(default_factory=list)
+    seed: Optional[int] = None
 
 
 class StoryScene(BaseModel):
@@ -235,18 +540,21 @@ class StoryScene(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: Optional[str] = None
     order: int = 0
-    script: ClipScript = Field(default_factory=ClipScript)
-    description: SceneDescription = Field(default_factory=lambda: SceneDescription(visual_prompt=""))
-    character_ids: List[str] = Field(default_factory=list)  # Characters in this scene
-    prop_ids: List[str] = Field(default_factory=list)  # Props/backgrounds
-    duration_estimate: Optional[float] = None  # Estimated duration in seconds
+    script_lines: List[ScriptLine] = Field(default_factory=list)
+    description: SceneDescription = Field(default_factory=SceneDescription)
+    character_ids: List[str] = Field(default_factory=list)
+    product_ids: List[str] = Field(default_factory=list)
+    duration_estimate: Optional[float] = None
     notes: Optional[str] = None
+    generation_overrides: SceneGenerationOverrides = Field(
+        default_factory=SceneGenerationOverrides
+    )
 
 
 class Story(BaseModel):
     """The complete story structure."""
     title: Optional[str] = None
-    genre: Optional[str] = None  # "advertising", "movie", "documentary", etc.
+    genre: Optional[str] = None
     synopsis: Optional[str] = None
     scenes: List[StoryScene] = Field(default_factory=list)
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
@@ -269,94 +577,139 @@ class GenerationSpec(BaseModel):
     prompt: Optional[str] = None
     negative_prompt: Optional[str] = None
     motion_prompt: Optional[str] = None
-    
+    camera_notes: Optional[str] = None
+
     # Keyframe references
-    first_frame: Optional[AssetRef] = None  # For I2V start or FLF start
-    last_frame: Optional[AssetRef] = None  # For FLF end
-    
+    first_frame: Optional[AssetRef] = None
+    last_frame: Optional[AssetRef] = None
+
     # Continuity linking (resolved at job time)
-    link_first_frame_from: Optional[ClipRef] = None  # "use last frame of clip X"
-    link_last_frame_to: Optional[ClipRef] = None  # "my last frame feeds clip Y"
-    
-    # Style/character injection
+    link_first_frame_from: Optional[ClipRef] = None
+    link_last_frame_to: Optional[ClipRef] = None
+
+    # Style/character/product injection
     style_ref: Optional[AssetRef] = None
-    character_refs: List[AssetRef] = Field(default_factory=list)  # For IP-adapter
-    
+    character_refs: List[AssetRef] = Field(default_factory=list)
+    product_refs: List[AssetRef] = Field(default_factory=list)
+    control_video_ref: Optional[AssetRef] = None
+
+    # LoRA overrides
+    lora_refs: List[AssetRef] = Field(default_factory=list)
+
     # Model override
     generator_id: Optional[str] = None
     generator_config: Optional[Dict[str, Any]] = None
+
+    # Audio usage policy (for AV generators)
+    audio_usage: Optional[str] = None  # "use_generated" | "use_tts" | "mix"
 
 
 class TimelineClip(BaseModel):
     """A clip on the timeline."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    track_id: str = "main"  # For multi-track support
-    start_time: float = 0.0  # Start time in seconds
-    duration: float = 0.0  # Duration in seconds
-    
+    track_id: str = "video_main"
+    start_time: float = 0.0        # Start time in seconds
+    duration: float = 0.0          # Duration in seconds
+
     # Content source
     source_type: ClipSourceType = ClipSourceType.PLACEHOLDER
-    scene_id: Optional[str] = None  # Link to story scene
-    
-    # Generation spec (for video/image clips)
+    scene_id: Optional[str] = None   # Link to story scene
+
+    # Scene instance grouping
+    group_id: Optional[str] = None   # SceneInstance id
+
+    # Generation spec (for video/image/av clips)
     generation_spec: Optional[GenerationSpec] = None
-    
-    # Script content (for incremental regeneration)
-    script: Optional[ClipScript] = None
-    
+
+    # Script content (for audio clips)
+    script_line_ids: List[str] = Field(default_factory=list)
+
     # State
     status: ClipStatus = ClipStatus.DRAFT
-    keyframe_path: Optional[str] = None  # Generated/uploaded keyframe image
-    artifact_path: Optional[str] = None  # Final video/audio artifact
-    preview_path: Optional[str] = None  # Low-res preview
-    
-    # Staleness tracking for incremental regeneration
+    keyframe_path: Optional[str] = None     # Generated/uploaded keyframe image
+    video_artifact_path: Optional[str] = None
+    audio_artifact_path: Optional[str] = None  # For AV or TTS clips
+    preview_path: Optional[str] = None
+
+    # Staleness tracking
     script_edited_at: Optional[float] = None
     keyframe_edited_at: Optional[float] = None
     style_edited_at: Optional[float] = None
+    prompt_edited_at: Optional[float] = None
     audio_generated_at: Optional[float] = None
     video_generated_at: Optional[float] = None
-    
-    # Computed properties
+    av_generated_at: Optional[float] = None    # For joint A/V
+
+    # Metadata from generation
+    generation_metadata: Optional[Dict[str, Any]] = None
+
     @property
     def is_audio_stale(self) -> bool:
-        if self.audio_generated_at is None:
+        if self.audio_generated_at is None and self.av_generated_at is None:
             return True
-        return (self.script_edited_at or 0) > self.audio_generated_at
-    
+        gen_at = max(self.audio_generated_at or 0, self.av_generated_at or 0)
+        return (self.script_edited_at or 0) > gen_at
+
     @property
     def is_video_stale(self) -> bool:
-        if self.video_generated_at is None:
+        if self.video_generated_at is None and self.av_generated_at is None:
             return True
+        gen_at = max(self.video_generated_at or 0, self.av_generated_at or 0)
         if self.is_audio_stale:
-            return True  # Audio changes cascade to video
-        return max(self.keyframe_edited_at or 0, self.style_edited_at or 0) > self.video_generated_at
+            return True
+        return max(
+            self.keyframe_edited_at or 0,
+            self.style_edited_at or 0,
+            self.prompt_edited_at or 0,
+        ) > gen_at
+
+    @property
+    def end_time(self) -> float:
+        return self.start_time + self.duration
 
 
 class TimelineTrack(BaseModel):
-    """A track on the timeline (for multi-track editing)."""
+    """A track on the timeline."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "Main"
-    type: str = "video"  # "video", "audio", "overlay"
+    type: TrackType = TrackType.VIDEO
     order: int = 0
     muted: bool = False
     locked: bool = False
+    height: int = 60  # UI track height in pixels
+
+
+class SceneInstance(BaseModel):
+    """
+    Groups video+audio clips that belong to a single scene on the timeline.
+    Moving one moves all. Trimming one asks about ripple.
+    """
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    scene_id: str
+    start_time: float = 0.0
+    duration: float = 0.0
+    video_clip_ids: List[str] = Field(default_factory=list)
+    audio_clip_ids: List[str] = Field(default_factory=list)
+    locked_move: bool = True   # Move all clips together
 
 
 class Timeline(BaseModel):
     """The complete timeline."""
-    tracks: List[TimelineTrack] = Field(default_factory=lambda: [TimelineTrack(id="main", name="Main", type="video")])
+    tracks: List[TimelineTrack] = Field(default_factory=lambda: [
+        TimelineTrack(id="video_main", name="Video 1", type=TrackType.VIDEO, order=0),
+        TimelineTrack(id="audio_dialog", name="Dialog", type=TrackType.AUDIO, order=1),
+        TimelineTrack(id="audio_music", name="Music", type=TrackType.MUSIC, order=2),
+    ])
     clips: List[TimelineClip] = Field(default_factory=list)
-    total_duration: float = 0.0  # Computed from clips
-    
+    scene_instances: List[SceneInstance] = Field(default_factory=list)
+    total_duration: float = 0.0
+
     def recompute_duration(self) -> None:
         """Recompute total duration from clips."""
         if not self.clips:
             self.total_duration = 0.0
         else:
-            self.total_duration = max(
-                clip.start_time + clip.duration for clip in self.clips
-            )
+            self.total_duration = max(c.end_time for c in self.clips)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -366,13 +719,13 @@ class Timeline(BaseModel):
 class JobProgressEvent(BaseModel):
     """Progress event for a running job."""
     job_id: str
-    seq: int  # Sequence number for resumption
-    stage: str  # 'extracting_frame', 'generating_keyframe', 'generating_video', etc.
-    stage_progress: float = 0.0  # 0.0 - 1.0
-    overall_progress: float = 0.0  # 0.0 - 1.0
+    seq: int
+    stage: str
+    stage_progress: float = 0.0
+    overall_progress: float = 0.0
     current_frame: Optional[int] = None
     total_frames: Optional[int] = None
-    preview_url: Optional[str] = None  # Progressive preview
+    preview_url: Optional[str] = None
     eta_seconds: Optional[float] = None
     message: Optional[str] = None
 
@@ -382,33 +735,33 @@ class Job(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: JobType
     status: JobStatus = JobStatus.PENDING
-    
+
     # What this job operates on
     clip_ids: List[str] = Field(default_factory=list)
     scene_ids: List[str] = Field(default_factory=list)
-    
+
     # Dependencies (jobs that must complete before this one)
     depends_on: List[str] = Field(default_factory=list)
-    
+
     # Generator to use
     generator_id: Optional[str] = None
     generator_config: Optional[Dict[str, Any]] = None
-    
-    # Story generation spec (for story_generate jobs)
+
+    # Story/script generation spec
     story_spec: Optional[Dict[str, Any]] = None
-    
+
     # VRAM requirement (for queue scheduling)
     vram_gb_required: float = 0.0
-    
+
     # Timing
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
-    
+
     # Results
     artifact_paths: List[str] = Field(default_factory=list)
     error_message: Optional[str] = None
-    
+
     # Progress tracking
     last_seq: int = 0
     last_progress: float = 0.0
@@ -429,98 +782,29 @@ class VideoProject(BaseModel):
     """Complete video project state."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    version: str = "1.0.0"  # Schema version for migrations
-    
+    version: str = "2.0.0"  # Schema version
+
     # Settings
     settings: ProjectSettings = Field(default_factory=ProjectSettings)
-    
+
     # Content
     library: AssetLibrary = Field(default_factory=AssetLibrary)
     story: Story = Field(default_factory=Story)
     timeline: Timeline = Field(default_factory=Timeline)
-    
+
     # Jobs
     job_queue: JobQueue = Field(default_factory=JobQueue)
-    
+
     # Metadata
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     updated_at: float = Field(default_factory=lambda: datetime.now().timestamp())
-    
+
     # Paths (set when project is opened)
-    root_path: Optional[str] = None  # User-selected folder
-    
+    root_path: Optional[str] = None
+
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
         self.updated_at = datetime.now().timestamp()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Generator Capabilities (for plugin system)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class GeneratorCapabilities(BaseModel):
-    """Capabilities declared by a generator plugin."""
-    # Identity
-    id: str
-    title: str
-    description: Optional[str] = None
-    version: str = "1.0.0"
-    
-    # Generator type
-    generator_type: str  # "llm", "tts", "t2i", "i2v", "t2v", "music", "upscaler"
-    
-    # Resource requirements
-    vram_gb_min: float = 0.0
-    vram_gb_recommended: float = 0.0
-    ram_gb_min: float = 0.0
-    
-    # Format support
-    supported_formats: List[str] = Field(default_factory=list)  # ["Portrait", "Landscape", "Square"]
-    
-    # Advanced capabilities
-    supports_ip_adapter: bool = False
-    supports_lora: bool = False
-    max_subjects: int = 1
-    accepts_text_prompt: bool = True
-    accepts_negative_prompt: bool = False
-    
-    # Video-specific
-    supports_i2v: bool = False  # Image-to-video
-    supports_t2v: bool = False  # Text-to-video
-    supports_flf: bool = False  # First+last frame interpolation
-    supports_preview_mode: bool = False  # Fast low-quality generation
-    supports_camera_control: bool = False
-    supported_control_nets: List[str] = Field(default_factory=list)  # ["depth", "pose", "canny"]
-    
-    # Resolution constraints
-    valid_resolutions: List[Tuple[int, int]] = Field(default_factory=list)
-    resolution_must_be_divisible_by: int = 8
-    max_frames: int = 120
-    max_duration_seconds: float = 5.0
-    
-    # TTS-specific
-    supports_voice_cloning: bool = False
-    supported_languages: List[str] = Field(default_factory=lambda: ["en"])
-    
-    # LLM-specific (for story generator)
-    max_context_tokens: int = 0
-    supports_streaming: bool = False
-
-
-class GeneratorConfig(BaseModel):
-    """User-configurable settings for a generator instance."""
-    generator_id: str
-    model_path: Optional[str] = None  # Local model path
-    api_key: Optional[str] = None  # For API-based generators
-    api_base_url: Optional[str] = None
-    
-    # Common settings
-    seed: Optional[int] = None
-    steps: Optional[int] = None
-    cfg_scale: Optional[float] = None
-    
-    # Generator-specific settings (flexible dict)
-    custom: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -528,44 +812,37 @@ class GeneratorConfig(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CreateProjectRequest(BaseModel):
-    """Request to create a new video project."""
-    folder_path: str  # User-selected folder
+    folder_path: str
     name: str
     settings: Optional[ProjectSettings] = None
 
 
 class CreateProjectResponse(BaseModel):
-    """Response from creating a project."""
     success: bool
     project: Optional[VideoProject] = None
     error: Optional[str] = None
 
 
 class OpenProjectRequest(BaseModel):
-    """Request to open an existing project."""
-    folder_path: str  # Folder containing xeditor.video.project.json
+    folder_path: str
 
 
 class OpenProjectResponse(BaseModel):
-    """Response from opening a project."""
     success: bool
     project: Optional[VideoProject] = None
     error: Optional[str] = None
 
 
 class SaveProjectRequest(BaseModel):
-    """Request to save project state."""
     project_id: str
 
 
 class SaveProjectResponse(BaseModel):
-    """Response from saving a project."""
     success: bool
     error: Optional[str] = None
 
 
 class StartJobRequest(BaseModel):
-    """Request to start a generation job."""
     project_id: str
     job_type: JobType
     clip_ids: List[str] = Field(default_factory=list)
@@ -573,22 +850,20 @@ class StartJobRequest(BaseModel):
     generator_id: Optional[str] = None
     generator_config: Optional[Dict[str, Any]] = None
     regeneration_mode: Optional[RegenerationMode] = None
+    story_spec: Optional[Dict[str, Any]] = None
 
 
 class StartJobResponse(BaseModel):
-    """Response from starting a job."""
     success: bool
     job_id: Optional[str] = None
     error: Optional[str] = None
 
 
 class CancelJobRequest(BaseModel):
-    """Request to cancel a running job."""
     project_id: str
     job_id: str
 
 
 class CancelJobResponse(BaseModel):
-    """Response from cancelling a job."""
     success: bool
     error: Optional[str] = None

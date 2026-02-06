@@ -44,12 +44,12 @@
       v-model="expandedSections.props"
       icon="category"
       label="Props & Backgrounds"
-      :caption="`${library.props.length} items`"
+      :caption="`${library.products.length} items`"
       header-class="text-primary"
     >
       <q-list dense>
         <q-item
-          v-for="prop in library.props"
+          v-for="prop in library.products"
           :key="prop.id"
           clickable
           @click="selectAsset('prop', prop.id)"
@@ -159,7 +159,7 @@ function addCharacter(): void {
   const code = prompt('Character code (short identifier):');
   if (!code) return;
 
-  projectStore.addCharacter({ name, code });
+  projectStore.addCharacter({ name, code, pose_images: {} });
 }
 
 function addProp(): void {
@@ -168,7 +168,7 @@ function addProp(): void {
   const code = prompt('Prop code:');
   if (!code) return;
 
-  projectStore.addProp({ name, code });
+  projectStore.addProduct({ name, code });
 }
 
 function addVoice(): void {

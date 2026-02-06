@@ -127,7 +127,7 @@
             <div class="col-6">
               <div class="text-caption text-grey-7 q-mb-xs">Script / Dialog</div>
               <div
-                v-for="(line, lineIndex) in scene.script.lines"
+                v-for="(line, lineIndex) in scene.script_lines"
                 :key="lineIndex"
                 class="script-line row items-center q-gutter-sm q-mb-xs"
               >
@@ -221,10 +221,13 @@ function addScene(): void {
   projectStore.addScene({
     order: story.value.scenes.length,
     title: `Scene ${story.value.scenes.length + 1}`,
-    script: { lines: [] },
+    script_lines: [],
     description: { visual_prompt: '' },
     character_ids: [],
-    prop_ids: [],
+    product_ids: [],
+    generation_overrides: {
+      lora_refs: [],
+    },
   });
 }
 
@@ -247,14 +250,15 @@ function moveScene(index: number, direction: number): void {
 
 function addLine(scene: StoryScene): void {
   const newLine: ScriptLine = {
+    id: crypto.randomUUID(),
     text: '',
   };
-  scene.script.lines.push(newLine);
+  scene.script_lines.push(newLine);
   markDirty();
 }
 
 function removeLine(scene: StoryScene, index: number): void {
-  scene.script.lines.splice(index, 1);
+  scene.script_lines.splice(index, 1);
   markDirty();
 }
 

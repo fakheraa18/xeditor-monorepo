@@ -1,13 +1,24 @@
 """
-Base Generator Classes and Registry
+Base Generator Classes and Registry (v2)
 
-This module defines the abstract base classes for all generator types
-and the registry for discovering and managing generators.
+Defines the abstract base classes for all generator types,
+result types, and the registry for discovering/managing generators.
+
+Generator types:
+- LLM: Story/script generation
+- TTS: Text-to-speech
+- ImageGenerator: Text-to-image
+- VideoGenerator: Image-to-video / Text-to-video
+- AudioVideoGenerator: Joint audio+video (e.g. LTX-2)
+- MusicGenerator: Music/background audio
+- SFXGenerator: Sound effects
+- LipSyncGenerator: Audio-driven lip sync
+- UpscalerGenerator: Image/video upscaling
 """
 
 import abc
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dc_field
 from datetime import datetime
 from pathlib import Path
 from typing import (
@@ -17,6 +28,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     Tuple,
     Type,
     TypeVar,
@@ -25,26 +37,44 @@ from typing import (
 from apps.video_editor.models import (
     GeneratorCapabilities,
     GeneratorConfig,
+    GeneratorType,
     JobProgressEvent,
     AssetRef,
+    ShapeConstraints,
+    FrameCountRule,
 )
 
 
-# Type for progress callback
+# ─────────────────────────────────────────────────────────────────────────────
+# Progress callback type
+# ─────────────────────────────────────────────────────────────────────────────
+
 ProgressCallback = Callable[[JobProgressEvent], Any]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Result types
+# ─────────────────────────────────────────────────────────────────────────────
+
 @dataclass
 class GenerationResult:
-    """Result from a generation operation."""
+    """Base result from any generation operation."""
     success: bool
     artifact_path: Optional[str] = None
     artifact_paths: Optional[List[str]] = None
     duration_seconds: Optional[float] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
     error: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class LLMResult:
+    """Result from LLM generation."""
+    success: bool
+    content: str = ""
+    finish_reason: Optional[str] = None
+    usage: Optional[Dict[str, int]] = None
+    error: Optional[str] = None
 
 
 @dataclass
@@ -75,13 +105,94 @@ class VideoResult(GenerationResult):
 
 
 @dataclass
-class LLMResult:
-    """Result from LLM generation."""
-    success: bool
-    content: str = ""
-    finish_reason: Optional[str] = None
-    usage: Optional[Dict[str, int]] = None
-    error: Optional[str] = None
+class AudioVideoResult(GenerationResult):
+    """
+    Result from joint audio+video generation (e.g. LTX-2).
+    Returns both a video and an audio artifact.
+    """
+    video_artifact_path: Optional[str] = None
+    audio_artifact_path: Optional[str] = None
+    width: int = 0
+    height: int = 0
+    fps: float = 30.0
+    frame_count: int = 0
+    duration_seconds: float = 0.0
+    sample_rate: int = 44100
+    seed: Optional[int] = None
+
+
+@dataclass
+class LipSyncResult(GenerationResult):
+    """Result from lip-sync generation."""
+    width: int = 0
+    height: int = 0
+    fps: float = 30.0
+    frame_count: int = 0
+    duration_seconds: float = 0.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shape constraint validation helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def validate_shape(
+    width: int,
+    height: int,
+    num_frames: Optional[int],
+    fps: Optional[int],
+    constraints: ShapeConstraints,
+) -> List[str]:
+    """
+    Validate resolution/frames/fps against generator shape constraints.
+    Returns a list of error messages (empty = valid).
+    """
+    errors: List[str] = []
+
+    if width % constraints.width_divisible_by != 0:
+        errors.append(
+            f"Width {width} must be divisible by {constraints.width_divisible_by}"
+        )
+    if height % constraints.height_divisible_by != 0:
+        errors.append(
+            f"Height {height} must be divisible by {constraints.height_divisible_by}"
+        )
+
+    if constraints.min_width and width < constraints.min_width:
+        errors.append(f"Width {width} is below minimum {constraints.min_width}")
+    if constraints.max_width and width > constraints.max_width:
+        errors.append(f"Width {width} exceeds maximum {constraints.max_width}")
+    if constraints.min_height and height < constraints.min_height:
+        errors.append(f"Height {height} is below minimum {constraints.min_height}")
+    if constraints.max_height and height > constraints.max_height:
+        errors.append(f"Height {height} exceeds maximum {constraints.max_height}")
+
+    if num_frames is not None and constraints.frame_count_rule:
+        rule = constraints.frame_count_rule
+        if (num_frames - rule.offset) % rule.divisor != 0:
+            errors.append(
+                f"Frame count {num_frames} must satisfy "
+                f"(n - {rule.offset}) % {rule.divisor} == 0"
+            )
+        if rule.min_frames and num_frames < rule.min_frames:
+            errors.append(
+                f"Frame count {num_frames} is below minimum {rule.min_frames}"
+            )
+        if rule.max_frames and num_frames > rule.max_frames:
+            errors.append(
+                f"Frame count {num_frames} exceeds maximum {rule.max_frames}"
+            )
+
+    if fps is not None:
+        if constraints.supported_fps and fps not in constraints.supported_fps:
+            errors.append(
+                f"FPS {fps} not in supported values {constraints.supported_fps}"
+            )
+        if constraints.min_fps and fps < constraints.min_fps:
+            errors.append(f"FPS {fps} is below minimum {constraints.min_fps}")
+        if constraints.max_fps and fps > constraints.max_fps:
+            errors.append(f"FPS {fps} exceeds maximum {constraints.max_fps}")
+
+    return errors
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,10 +202,10 @@ class LLMResult:
 class BaseGenerator(abc.ABC):
     """
     Abstract base class for all generators.
-    
-    Generators are stateless services that:
-    1. Declare their capabilities
-    2. Receive inputs and produce outputs
+
+    Generators are services that:
+    1. Declare their capabilities (including UI schema + shape constraints)
+    2. Receive inputs and produce typed outputs
     3. Manage VRAM lifecycle (load/unload)
     4. Report progress via callbacks
     """
@@ -106,54 +217,37 @@ class BaseGenerator(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def get_id(cls) -> str:
-        """Get the unique identifier for this generator."""
+        """Unique identifier for this generator."""
         ...
 
     @classmethod
     @abc.abstractmethod
     def get_capabilities(cls) -> GeneratorCapabilities:
-        """Get the capabilities of this generator."""
+        """Capabilities, UI schema, and shape constraints."""
         ...
 
     @abc.abstractmethod
     async def load(self) -> None:
-        """
-        Load the model into VRAM/memory.
-        
-        Called before generation starts. Should be idempotent.
-        """
+        """Load model into VRAM/memory. Must be idempotent."""
         ...
 
     @abc.abstractmethod
     async def unload(self) -> None:
-        """
-        Unload the model from VRAM/memory.
-        
-        Called after generation completes or on error.
-        Should clear GPU memory aggressively.
-        """
+        """Unload model from VRAM/memory. Clear GPU memory aggressively."""
         ...
 
     def is_loaded(self) -> bool:
-        """Check if the model is currently loaded."""
         return self._loaded
 
     async def __aenter__(self) -> "BaseGenerator":
-        """Context manager entry - load model."""
         await self.load()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit - unload model."""
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.unload()
 
     def validate_config(self) -> List[str]:
-        """
-        Validate the current configuration.
-        
-        Returns:
-            List of validation error messages (empty if valid)
-        """
+        """Validate current configuration. Returns error messages (empty = valid)."""
         return []
 
 
@@ -173,19 +267,6 @@ class LLMGenerator(BaseGenerator):
         temperature: float = 0.7,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> LLMResult:
-        """
-        Generate text from the LLM.
-        
-        Args:
-            prompt: The user prompt
-            system_prompt: Optional system prompt
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            progress_callback: Optional callback for streaming progress
-            
-        Returns:
-            LLMResult with the generated text
-        """
         ...
 
     async def generate_stream(
@@ -195,12 +276,6 @@ class LLMGenerator(BaseGenerator):
         max_tokens: int = 4096,
         temperature: float = 0.7,
     ) -> AsyncGenerator[str, None]:
-        """
-        Stream text generation.
-        
-        Yields:
-            Text chunks as they are generated
-        """
         result = await self.generate(prompt, system_prompt, max_tokens, temperature)
         if result.success:
             yield result.content
@@ -220,21 +295,6 @@ class TTSGenerator(BaseGenerator):
         emotion: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> TTSResult:
-        """
-        Generate speech from text.
-        
-        Args:
-            text: Text to synthesize
-            output_path: Path to save the audio file
-            voice_sample_path: Optional path to voice sample for cloning
-            language: Language code
-            speed: Speech speed multiplier
-            emotion: Optional emotion hint
-            progress_callback: Optional callback for progress
-            
-        Returns:
-            TTSResult with audio file path and duration
-        """
         ...
 
 
@@ -254,29 +314,13 @@ class ImageGenerator(BaseGenerator):
         cfg_scale: Optional[float] = None,
         style_ref: Optional[str] = None,
         character_refs: Optional[List[str]] = None,
+        product_refs: Optional[List[str]] = None,
+        lora_paths: Optional[List[str]] = None,
+        control_image: Optional[str] = None,
+        control_type: Optional[str] = None,
         preview_mode: bool = False,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> ImageResult:
-        """
-        Generate an image from text.
-        
-        Args:
-            prompt: Text prompt for the image
-            output_path: Path to save the image
-            negative_prompt: Negative prompt
-            width: Image width
-            height: Image height
-            seed: Random seed for reproducibility
-            steps: Number of inference steps
-            cfg_scale: Classifier-free guidance scale
-            style_ref: Path to style reference image
-            character_refs: Paths to character reference images (IP-adapter)
-            preview_mode: If True, generate fast low-quality preview
-            progress_callback: Optional callback for progress
-            
-        Returns:
-            ImageResult with image path and metadata
-        """
         ...
 
 
@@ -301,41 +345,59 @@ class VideoGenerator(BaseGenerator):
         cfg_scale: Optional[float] = None,
         style_ref: Optional[str] = None,
         character_refs: Optional[List[str]] = None,
+        product_refs: Optional[List[str]] = None,
+        lora_paths: Optional[List[str]] = None,
+        control_video: Optional[str] = None,
+        control_type: Optional[str] = None,
         camera_motion: Optional[str] = None,
         preview_mode: bool = False,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> VideoResult:
-        """
-        Generate a video.
-        
-        Args:
-            output_path: Path to save the video
-            prompt: Text prompt (for T2V or motion guidance)
-            negative_prompt: Negative prompt
-            motion_prompt: Motion-specific prompt
-            first_frame_path: First frame image (for I2V or FLF)
-            last_frame_path: Last frame image (for FLF interpolation)
-            duration_seconds: Target video duration
-            fps: Frames per second
-            width: Video width
-            height: Video height
-            seed: Random seed
-            steps: Inference steps
-            cfg_scale: CFG scale
-            style_ref: Style reference image path
-            character_refs: Character reference image paths
-            camera_motion: Camera motion preset/description
-            preview_mode: If True, generate fast low-quality preview
-            progress_callback: Optional callback for progress
-            
-        Returns:
-            VideoResult with video path and metadata
-        """
+        ...
+
+
+class AudioVideoGenerator(BaseGenerator):
+    """
+    Base class for joint audio+video generators (e.g. LTX-2).
+
+    These produce both a video file and a synchronized audio file
+    in a single generation pass.
+    """
+
+    @abc.abstractmethod
+    async def generate(
+        self,
+        video_output_path: str,
+        audio_output_path: str,
+        prompt: Optional[str] = None,
+        negative_prompt: Optional[str] = None,
+        motion_prompt: Optional[str] = None,
+        first_frame_path: Optional[str] = None,
+        last_frame_path: Optional[str] = None,
+        audio_prompt: Optional[str] = None,
+        audio_input_path: Optional[str] = None,
+        duration_seconds: float = 4.0,
+        fps: int = 24,
+        width: int = 1024,
+        height: int = 576,
+        seed: Optional[int] = None,
+        steps: Optional[int] = None,
+        cfg_scale: Optional[float] = None,
+        style_ref: Optional[str] = None,
+        character_refs: Optional[List[str]] = None,
+        product_refs: Optional[List[str]] = None,
+        lora_paths: Optional[List[str]] = None,
+        control_video: Optional[str] = None,
+        control_type: Optional[str] = None,
+        camera_motion: Optional[str] = None,
+        preview_mode: bool = False,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> AudioVideoResult:
         ...
 
 
 class MusicGenerator(BaseGenerator):
-    """Base class for music/SFX generators."""
+    """Base class for music generators."""
 
     @abc.abstractmethod
     async def generate(
@@ -343,24 +405,43 @@ class MusicGenerator(BaseGenerator):
         prompt: str,
         output_path: str,
         duration_seconds: float = 30.0,
+        lyrics: Optional[str] = None,
+        style: Optional[str] = None,
         seed: Optional[int] = None,
         temperature: float = 1.0,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> GenerationResult:
-        """
-        Generate music or sound effects.
-        
-        Args:
-            prompt: Description of the music/sound
-            output_path: Path to save the audio
-            duration_seconds: Target duration
-            seed: Random seed
-            temperature: Generation temperature
-            progress_callback: Optional callback for progress
-            
-        Returns:
-            GenerationResult with audio path
-        """
+        ...
+
+
+class SFXGenerator(BaseGenerator):
+    """Base class for sound effect generators."""
+
+    @abc.abstractmethod
+    async def generate(
+        self,
+        prompt: str,
+        output_path: str,
+        duration_seconds: float = 5.0,
+        seed: Optional[int] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> GenerationResult:
+        ...
+
+
+class LipSyncGenerator(BaseGenerator):
+    """Base class for audio-driven lip sync generators."""
+
+    @abc.abstractmethod
+    async def generate(
+        self,
+        video_input_path: str,
+        audio_input_path: str,
+        output_path: str,
+        face_ref_path: Optional[str] = None,
+        mask_roi: Optional[Tuple[int, int, int, int]] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> LipSyncResult:
         ...
 
 
@@ -376,19 +457,6 @@ class UpscalerGenerator(BaseGenerator):
         denoise: bool = False,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> GenerationResult:
-        """
-        Upscale an image or video.
-        
-        Args:
-            input_path: Path to input file
-            output_path: Path to save output
-            scale_factor: Upscaling factor
-            denoise: Whether to apply denoising
-            progress_callback: Optional callback for progress
-            
-        Returns:
-            GenerationResult with output path
-        """
         ...
 
 
@@ -398,76 +466,85 @@ class UpscalerGenerator(BaseGenerator):
 
 T = TypeVar("T", bound=BaseGenerator)
 
+# Map generator type to expected base class
+GENERATOR_TYPE_BASE_MAP: Dict[GeneratorType, Type[BaseGenerator]] = {
+    GeneratorType.LLM: LLMGenerator,
+    GeneratorType.TTS: TTSGenerator,
+    GeneratorType.T2I: ImageGenerator,
+    GeneratorType.I2V: VideoGenerator,
+    GeneratorType.T2V: VideoGenerator,
+    GeneratorType.AV: AudioVideoGenerator,
+    GeneratorType.MUSIC: MusicGenerator,
+    GeneratorType.SFX: SFXGenerator,
+    GeneratorType.LIPSYNC: LipSyncGenerator,
+    GeneratorType.UPSCALER: UpscalerGenerator,
+}
+
 
 class GeneratorRegistry:
     """
     Registry for discovering and managing generator plugins.
-    
+
     Generators can be registered programmatically or discovered
     from a plugins directory.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._generators: Dict[str, Type[BaseGenerator]] = {}
         self._instances: Dict[str, BaseGenerator] = {}
+        self._builtin_ids: Set[str] = set()
 
-    def register(self, generator_class: Type[BaseGenerator]) -> None:
-        """
-        Register a generator class.
-        
-        Args:
-            generator_class: The generator class to register
-        """
+    def register(
+        self,
+        generator_class: Type[BaseGenerator],
+        is_builtin: bool = True,
+    ) -> None:
+        """Register a generator class."""
         generator_id = generator_class.get_id()
         self._generators[generator_id] = generator_class
+        if is_builtin:
+            self._builtin_ids.add(generator_id)
 
     def unregister(self, generator_id: str) -> None:
-        """Unregister a generator by ID."""
+        """Unregister a generator by ID. Cannot unregister built-ins."""
+        if generator_id in self._builtin_ids:
+            raise ValueError(f"Cannot unregister built-in generator: {generator_id}")
         self._generators.pop(generator_id, None)
         instance = self._instances.pop(generator_id, None)
         if instance and instance.is_loaded():
             asyncio.create_task(instance.unload())
 
-    def get_generator_class(self, generator_id: str) -> Optional[Type[BaseGenerator]]:
-        """Get a generator class by ID."""
+    def is_builtin(self, generator_id: str) -> bool:
+        return generator_id in self._builtin_ids
+
+    def get_generator_class(
+        self, generator_id: str
+    ) -> Optional[Type[BaseGenerator]]:
         return self._generators.get(generator_id)
 
     def get_generator(
         self,
         generator_id: str,
-        config: Optional[GeneratorConfig] = None
+        config: Optional[GeneratorConfig] = None,
     ) -> Optional[BaseGenerator]:
-        """
-        Get or create a generator instance.
-        
-        Args:
-            generator_id: ID of the generator
-            config: Optional configuration for the generator
-            
-        Returns:
-            Generator instance or None if not found
-        """
+        """Create a new generator instance (not cached)."""
         generator_class = self._generators.get(generator_id)
         if not generator_class:
             return None
-        
-        # Create new instance with config
         return generator_class(config)
 
     def get_cached_instance(self, generator_id: str) -> Optional[BaseGenerator]:
         """Get a cached generator instance (may be loaded)."""
         return self._instances.get(generator_id)
 
-    def list_generators(self, generator_type: Optional[str] = None) -> List[GeneratorCapabilities]:
-        """
-        List all registered generators.
-        
-        Args:
-            generator_type: Filter by type (e.g., "llm", "tts", "t2i")
-            
-        Returns:
-            List of generator capabilities
-        """
+    def cache_instance(self, generator_id: str, instance: BaseGenerator) -> None:
+        """Cache a generator instance for reuse."""
+        self._instances[generator_id] = instance
+
+    def list_generators(
+        self, generator_type: Optional[GeneratorType] = None
+    ) -> List[GeneratorCapabilities]:
+        """List all registered generators, optionally filtered by type."""
         result = []
         for generator_class in self._generators.values():
             caps = generator_class.get_capabilities()
@@ -475,68 +552,47 @@ class GeneratorRegistry:
                 result.append(caps)
         return result
 
-    def list_by_type(self, generator_type: str) -> List[GeneratorCapabilities]:
-        """List generators of a specific type."""
-        return self.list_generators(generator_type)
-
     def find_compatible(
         self,
-        generator_type: str,
+        generator_type: GeneratorType,
         vram_available_gb: float,
         resolution: Optional[Tuple[int, int]] = None,
         requires_i2v: bool = False,
         requires_flf: bool = False,
         requires_voice_cloning: bool = False,
+        requires_audio_output: bool = False,
     ) -> List[GeneratorCapabilities]:
-        """
-        Find generators that match the given requirements.
-        
-        Args:
-            generator_type: Type of generator needed
-            vram_available_gb: Available VRAM in GB
-            resolution: Required resolution (width, height)
-            requires_i2v: Must support image-to-video
-            requires_flf: Must support first+last frame
-            requires_voice_cloning: Must support voice cloning
-            
-        Returns:
-            List of compatible generator capabilities, sorted by preference
-        """
+        """Find generators matching requirements, sorted by preference."""
         compatible = []
-        
+
         for generator_class in self._generators.values():
             caps = generator_class.get_capabilities()
-            
-            # Filter by type
+
             if caps.generator_type != generator_type:
                 continue
-            
-            # Filter by VRAM
             if caps.vram_gb_min > vram_available_gb:
                 continue
-            
-            # Filter by capabilities
             if requires_i2v and not caps.supports_i2v:
                 continue
             if requires_flf and not caps.supports_flf:
                 continue
             if requires_voice_cloning and not caps.supports_voice_cloning:
                 continue
-            
-            # Filter by resolution
+            if requires_audio_output and not caps.produces_audio:
+                continue
+
             if resolution and caps.valid_resolutions:
                 if resolution not in caps.valid_resolutions:
-                    # Check if resolution is compatible (divisibility)
                     w, h = resolution
-                    div = caps.resolution_must_be_divisible_by
-                    if w % div != 0 or h % div != 0:
+                    sc = caps.shape_constraints
+                    if w % sc.width_divisible_by != 0 or h % sc.height_divisible_by != 0:
                         continue
-            
+
             compatible.append(caps)
-        
-        # Sort by: recommended VRAM (prefer lower), then by capabilities
-        compatible.sort(key=lambda c: (c.vram_gb_recommended, -c.max_duration_seconds))
-        
+
+        compatible.sort(
+            key=lambda c: (c.vram_gb_recommended, -c.max_duration_seconds)
+        )
         return compatible
 
     async def unload_all(self) -> None:
@@ -566,31 +622,36 @@ def get_generator_registry() -> GeneratorRegistry:
 # RPC Handlers
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def handle_ve_list_generators(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def handle_ve_list_generators(
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """RPC handler for listing available generators."""
     registry = get_generator_registry()
-    
-    generator_type = payload.get("type") if payload else None
-    generators = registry.list_generators(generator_type)
-    
+
+    type_str = payload.get("type") if payload else None
+    gen_type = GeneratorType(type_str) if type_str else None
+    generators = registry.list_generators(gen_type)
+
     return {
         "success": True,
         "generators": [g.model_dump() for g in generators],
     }
 
 
-async def handle_ve_get_generator_capabilities(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def handle_ve_get_generator_capabilities(
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
     """RPC handler for getting a generator's capabilities."""
     registry = get_generator_registry()
-    
+
     generator_id = payload.get("generatorId", "")
     if not generator_id:
         return {"success": False, "error": "Generator ID is required"}
-    
+
     generator_class = registry.get_generator_class(generator_id)
     if not generator_class:
         return {"success": False, "error": f"Generator not found: {generator_id}"}
-    
+
     capabilities = generator_class.get_capabilities()
     return {
         "success": True,
@@ -598,31 +659,36 @@ async def handle_ve_get_generator_capabilities(payload: Dict[str, Any]) -> Dict[
     }
 
 
-async def handle_ve_find_compatible_generators(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def handle_ve_find_compatible_generators(
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
     """RPC handler for finding compatible generators."""
     registry = get_generator_registry()
-    
-    generator_type = payload.get("type", "")
+
+    type_str = payload.get("type", "")
     vram_available = payload.get("vramAvailableGb", 24.0)
     resolution = payload.get("resolution")
     requires_i2v = payload.get("requiresI2v", False)
     requires_flf = payload.get("requiresFlf", False)
     requires_voice_cloning = payload.get("requiresVoiceCloning", False)
-    
-    if not generator_type:
+    requires_audio_output = payload.get("requiresAudioOutput", False)
+
+    if not type_str:
         return {"success": False, "error": "Generator type is required"}
-    
+
+    gen_type = GeneratorType(type_str)
     resolution_tuple = tuple(resolution) if resolution else None
-    
+
     compatible = registry.find_compatible(
-        generator_type=generator_type,
+        generator_type=gen_type,
         vram_available_gb=vram_available,
         resolution=resolution_tuple,
         requires_i2v=requires_i2v,
         requires_flf=requires_flf,
         requires_voice_cloning=requires_voice_cloning,
+        requires_audio_output=requires_audio_output,
     )
-    
+
     return {
         "success": True,
         "generators": [g.model_dump() for g in compatible],

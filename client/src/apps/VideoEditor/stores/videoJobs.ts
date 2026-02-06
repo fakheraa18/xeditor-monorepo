@@ -75,6 +75,14 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
     generators.value.filter((g) => g.generator_type === 'music'),
   );
 
+  const avGenerators = computed(() => generators.value.filter((g) => g.generator_type === 'av'));
+
+  const lipsyncGenerators = computed(() =>
+    generators.value.filter((g) => g.generator_type === 'lipsync'),
+  );
+
+  const sfxGenerators = computed(() => generators.value.filter((g) => g.generator_type === 'sfx'));
+
   // ─────────────────────────────────────────────────────────────────────
   // WebSocket Communication
   // ─────────────────────────────────────────────────────────────────────
@@ -399,7 +407,7 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
       error?: string;
     }>('ve_job_start', {
       projectId,
-      jobType: 'story_generate',
+      jobType: 'script_generate',
       generatorId: options?.generatorId || 'story_llm',
       ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
       storySpec,
@@ -411,12 +419,12 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
 
     const job: Job = {
       id: response.jobId,
-      type: 'story_generate',
+      type: 'script_generate',
       status: response.status || 'queued',
       clip_ids: [],
       scene_ids: [],
       depends_on: [],
-      generator_id: options?.generatorId || 'story_llm',
+      generator_id: options?.generatorId ?? 'story_llm',
       vram_gb_required: 0,
       created_at: Date.now() / 1000,
       artifact_paths: [],
@@ -485,6 +493,36 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
   }
 
   /**
+   * Start joint audio+video generation
+   */
+  async function generateAV(options?: {
+    clipIds?: string[];
+    generatorId?: string;
+    generatorConfig?: Record<string, unknown>;
+  }): Promise<string> {
+    return startJob('av_generate', {
+      clipIds: options?.clipIds || [],
+      ...(options?.generatorId && { generatorId: options.generatorId }),
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+    });
+  }
+
+  /**
+   * Start lip-sync generation
+   */
+  async function generateLipSync(options?: {
+    clipIds?: string[];
+    generatorId?: string;
+    generatorConfig?: Record<string, unknown>;
+  }): Promise<string> {
+    return startJob('lipsync', {
+      clipIds: options?.clipIds || [],
+      ...(options?.generatorId && { generatorId: options.generatorId }),
+      ...(options?.generatorConfig && { generatorConfig: options.generatorConfig }),
+    });
+  }
+
+  /**
    * Regenerate specific clips with mode
    */
   async function regenerateClips(
@@ -495,12 +533,17 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
       generatorConfig?: Record<string, unknown>;
     },
   ): Promise<string> {
-    const jobType: JobType =
-      mode === 'preview_audio' || mode === 'regen_audio'
-        ? 'tts_generate'
-        : mode === 'regen_video'
-          ? 'video_generate'
-          : 'video_generate'; // regen_audio_video and regen_chain
+    const modeToJobType: Record<string, JobType> = {
+      preview_audio: 'tts_generate',
+      regen_audio: 'tts_generate',
+      regen_video: 'video_generate',
+      regen_av: 'av_generate',
+      regen_audio_video: 'video_generate',
+      regen_chain: 'video_generate',
+      regen_all_stale: 'video_generate',
+    };
+
+    const jobType: JobType = modeToJobType[mode] || 'video_generate';
 
     return startJob(jobType, {
       clipIds,
@@ -559,6 +602,9 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
     imageGenerators,
     videoGenerators,
     musicGenerators,
+    avGenerators,
+    lipsyncGenerators,
+    sfxGenerators,
 
     // Job operations
     startJob,
@@ -578,6 +624,8 @@ export const useVideoJobsStore = defineStore('videoJobs', () => {
     generateAudio,
     generateImages,
     generateVideo,
+    generateAV,
+    generateLipSync,
     exportProject,
     regenerateClips,
     runFullPipeline,

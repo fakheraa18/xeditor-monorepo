@@ -190,6 +190,7 @@
   <!-- Folder Picker Dialog for New Project -->
   <FolderPickerDialog
     v-model="showFolderPicker"
+    :request-fn="veRequestFn"
     @select="onFolderSelected"
     @cancel="showFolderPicker = false"
   />
@@ -197,6 +198,7 @@
   <!-- Folder Picker Dialog for Open Project -->
   <FolderPickerDialog
     v-model="showOpenFolderPicker"
+    :request-fn="veRequestFn"
     @select="onOpenFolderSelected"
     @cancel="showOpenFolderPicker = false"
   />
@@ -205,6 +207,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useVideoProjectStore } from '../stores';
+import { useVideoCompanionStore } from '../stores/videoCompanion';
 import { CANVAS_PRESETS, type RecentProject, type CanvasPreset } from '../types';
 import FolderPickerDialog from '../../CodeEditor/components/editor/FolderPickerDialog.vue';
 
@@ -215,6 +218,12 @@ const emit = defineEmits<{
 }>();
 
 const projectStore = useVideoProjectStore();
+const videoCompanion = useVideoCompanionStore();
+
+/** Provide the video companion's request function to the folder picker */
+function veRequestFn<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+  return videoCompanion.request<T>(type, payload);
+}
 
 // State
 const tab = ref<'new' | 'open' | 'recent'>('new');

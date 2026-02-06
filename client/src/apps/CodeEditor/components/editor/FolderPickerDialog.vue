@@ -170,12 +170,31 @@ const emit = defineEmits<{
   (e: 'cancel'): void;
 }>();
 
+type RequestFn = <T>(type: string, payload: Record<string, unknown>) => Promise<T>;
+
 const props = defineProps<{
   modelValue: boolean;
   initialPath?: string;
+  /** Optional custom request function (e.g. from video editor companion).
+   *  When provided, this is used instead of the local companion store. */
+  requestFn?: RequestFn;
 }>();
 
 const companionStore = useLocalCompanionStore();
+
+/** Resolved request function: use the prop if supplied, otherwise the companion store */
+function doRequest<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+  if (props.requestFn) {
+    return props.requestFn<T>(type, payload);
+  }
+  return companionStore.request<T>(type, payload);
+}
+
+/** Whether the connection is available */
+function isReady(): boolean {
+  if (props.requestFn) return true; // caller guarantees connectivity
+  return companionStore.isConnected;
+}
 
 const dialogVisible = computed({
   get: () => props.modelValue,
@@ -205,13 +224,13 @@ const canGoUp = computed(() => {
 });
 
 async function loadHomeDirectory(): Promise<void> {
-  if (!companionStore.isConnected) {
+  if (!isReady()) {
     error.value = 'Local Companion is not connected';
     return;
   }
 
   try {
-    const response = await companionStore.request<{
+    const response = await doRequest<{
       home: string;
       system: string;
       commonLocations: CommonLocation[];
@@ -230,7 +249,7 @@ async function loadHomeDirectory(): Promise<void> {
 }
 
 async function navigateTo(path: string): Promise<void> {
-  if (!companionStore.isConnected) {
+  if (!isReady()) {
     error.value = 'Local Companion is not connected';
     return;
   }
@@ -240,7 +259,7 @@ async function navigateTo(path: string): Promise<void> {
   entries.value = [];
 
   try {
-    const response = await companionStore.request<{
+    const response = await doRequest<{
       success: boolean;
       path: string;
       entries: DirectoryEntry[];

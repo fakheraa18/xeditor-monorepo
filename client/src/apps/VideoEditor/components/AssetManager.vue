@@ -59,7 +59,7 @@
 
     <!-- Props Grid -->
     <div v-if="activeCategory === 'props'" class="assets-grid">
-      <q-card v-for="prop in library.props" :key="prop.id" class="asset-card" flat bordered>
+      <q-card v-for="prop in library.products" :key="prop.id" class="asset-card" flat bordered>
         <q-card-section class="text-center">
           <q-icon name="image" size="64px" color="grey" />
           <div class="text-subtitle1 q-mt-sm">{{ prop.name }}</div>
@@ -125,7 +125,7 @@ function addCharacter(): void {
   const code = prompt('Character code:');
   if (!code) return;
 
-  projectStore.addCharacter({ name, code });
+  projectStore.addCharacter({ name, code, pose_images: {} });
 }
 
 function editCharacter(char: CharacterAsset): void {
@@ -157,7 +157,7 @@ function addProp(): void {
   const code = prompt('Prop code:');
   if (!code) return;
 
-  projectStore.addProp({ name, code });
+  projectStore.addProduct({ name, code });
 }
 
 function addVoice(): void {

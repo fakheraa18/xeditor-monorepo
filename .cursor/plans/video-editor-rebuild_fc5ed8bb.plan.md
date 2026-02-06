@@ -4,25 +4,25 @@ overview: Rebuild the VideoEditor (only) into an extensible generator-driven AI 
 todos:
   - id: models-contracts
     content: Redesign VideoEditor domain models (Project/Assets/Scenes/TimelineGroups/Clips/Jobs) and mirror them in TS types; add GeneratorUiSchema, extended GeneratorCapabilities, and support for joint Audio+Video generators (capabilities + shape constraints + result types).
-    status: pending
+    status: completed
   - id: generator-registry
     content: Implement safe custom generator discovery + add/delete/reload APIs; enforce base-class inheritance + schema validation; keep built-ins non-deletable.
-    status: pending
+    status: completed
   - id: asset-io
     content: Add HTTP asset upload/serve endpoints; implement frontend asset import + webcam control-video recording and upload.
-    status: pending
+    status: completed
   - id: scene-planner
     content: Implement audio-first Scene→Clip planner (splitting by generator max duration, continuity frame linking, ripple rules) and integrate into timeline UX.
-    status: pending
+    status: completed
   - id: job-graph
     content: Refactor job execution into explicit job graphs (script→audio→plan→image→video→lipsync→export), with VRAM-aware scheduling and progress stages.
-    status: pending
+    status: completed
   - id: ui-workspace
     content: Rebuild VideoEditor UI into Premiere-style docked workspace and implement generator panels that auto-render from GeneratorUiSchema.
-    status: pending
+    status: completed
   - id: export-polish
     content: Upgrade export to support multiple audio tracks (dialog/music/sfx), track mixing controls, and robust final render outputs under project renders/.
-    status: pending
+    status: completed
 isProject: false
 ---
 

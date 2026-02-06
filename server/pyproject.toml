@@ -21,6 +21,7 @@ dependencies = [
     "pathspec",
     # File watching
     "watchdog",
+    "python-multipart>=0.0.22",
 ]
 
 [project.optional-dependencies]

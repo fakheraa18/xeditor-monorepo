@@ -5,50 +5,70 @@
       <ProjectWizard @created="onProjectReady" @opened="onProjectReady" @cancel="goHome" />
     </div>
 
-    <!-- Project open - show main content based on active tab -->
-    <div v-else class="main-content q-pa-md">
-      <StoryDesigner v-if="activeTab === 'story'" />
-      <AssetManager v-else-if="activeTab === 'assets'" />
-      <TimelineEditor v-else-if="activeTab === 'timeline'" />
-      <ExportPanel v-else-if="activeTab === 'export'" />
+    <!-- Project open - Premiere-style workspace -->
+    <div v-else class="workspace-container">
+      <!-- Center: Video Player (upper portion) -->
+      <div class="player-area">
+        <VideoPlayer />
+      </div>
+
+      <!-- Bottom: Multi-track Timeline (full width below player) -->
+      <div class="timeline-area">
+        <TimelineEditor />
+      </div>
     </div>
+
+    <!-- Script Generator Dialog -->
+    <q-dialog v-model="showScriptGeneratorLocal" position="right" full-height>
+      <q-card style="width: 500px; max-width: 90vw">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Script Generator</div>
+          <q-space />
+          <q-btn icon="close" flat round dense @click="showScriptGeneratorLocal = false" />
+        </q-card-section>
+        <q-card-section>
+          <StoryDesigner />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { toRef } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useVideoProjectStore } from '../stores';
 import ProjectWizard from '../components/ProjectWizard.vue';
-import StoryDesigner from '../components/StoryDesigner.vue';
-import AssetManager from '../components/AssetManager.vue';
+import VideoPlayer from '../components/VideoPlayer.vue';
 import TimelineEditor from '../components/TimelineEditor.vue';
-import ExportPanel from '../components/ExportPanel.vue';
+import StoryDesigner from '../components/StoryDesigner.vue';
 
-// Props from layout
 const props = withDefaults(
   defineProps<{
-    activeTab?: 'story' | 'assets' | 'timeline' | 'export';
+    rightPanel?: string;
+    showScriptGenerator?: boolean;
   }>(),
   {
-    activeTab: 'story',
+    rightPanel: 'properties',
+    showScriptGenerator: false,
   },
 );
 
 const emit = defineEmits<{
-  'update:active-tab': [value: 'story' | 'assets' | 'timeline' | 'export'];
+  'update:right-panel': [value: string];
+  'update:show-script-generator': [value: boolean];
 }>();
 
 const router = useRouter();
 const projectStore = useVideoProjectStore();
 
-// Reactive reference to activeTab prop
-const activeTab = toRef(props, 'activeTab');
+const showScriptGeneratorLocal = computed({
+  get: () => props.showScriptGenerator,
+  set: (val: boolean) => emit('update:show-script-generator', val),
+});
 
-// Methods
 function onProjectReady(): void {
-  // Project is now open, emit to show story tab
-  emit('update:active-tab', 'story');
+  // Project opened, workspace shows automatically
 }
 
 function goHome(): void {
@@ -59,15 +79,36 @@ function goHome(): void {
 <style scoped lang="scss">
 .video-editor-page {
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .full-height {
-  min-height: calc(100vh - 100px);
+  min-height: calc(100vh - 120px);
 }
 
-.main-content {
-  height: 100%;
-  overflow: auto;
-  background: var(--q-grey-3);
+.workspace-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px); // header 40px + footer 80px
+  background: #1a1a2e;
+}
+
+.player-area {
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f0f1a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.timeline-area {
+  height: 280px;
+  min-height: 200px;
+  background: #16213e;
+  overflow: hidden;
 }
 </style>

@@ -34,6 +34,13 @@ from apps.video_editor.generators.base import (
     handle_ve_find_compatible_generators,
     get_generator_registry,
 )
+from apps.video_editor.generators.discovery import (
+    discover_custom_generators,
+    handle_ve_custom_generators_list,
+    handle_ve_custom_generators_add,
+    handle_ve_custom_generators_remove,
+    handle_ve_generators_reload,
+)
 from apps.video_editor.jobs.queue import (
     handle_ve_start_job,
     handle_ve_cancel_job,
@@ -41,9 +48,22 @@ from apps.video_editor.jobs.queue import (
     handle_ve_list_jobs,
     get_job_queue,
 )
+from apps.video_editor.planner import (
+    handle_ve_plan_scene,
+    handle_ve_plan_all_scenes,
+)
+from apps.video_editor.assets import router as assets_router
+from apps.code_editor.filesystem import (
+    handle_get_home_directory,
+    handle_list_directory,
+)
 
 
 router = APIRouter(prefix="/video-editor", tags=["video-editor"])
+
+# Include assets sub-router → endpoints become /video-editor/assets/*
+router.include_router(assets_router)
+
 
 # Track connected WebSocket clients
 _stream_websockets: Set[WebSocket] = set()
@@ -119,7 +139,20 @@ async def init_video_editor() -> None:
         except Exception as e:
             print(f"[video_editor] Error registering {gen_class.__name__}: {e}")
     
-    print(f"[video_editor] Initialized with {len(generators_to_register)} generators")
+    print(f"[video_editor] Registered {len(generators_to_register)} built-in generators")
+
+    # Discover custom generators from plugins directory
+    custom_results = discover_custom_generators(registry)
+    custom_ok = sum(1 for errs in custom_results.values() if not errs)
+    custom_fail = sum(1 for errs in custom_results.values() if errs)
+    if custom_results:
+        print(f"[video_editor] Custom generators: {custom_ok} loaded, {custom_fail} failed")
+        for gen_id, errs in custom_results.items():
+            if errs:
+                print(f"[video_editor]   FAILED {gen_id}: {'; '.join(errs)}")
+
+    total = len(registry.list_generators())
+    print(f"[video_editor] Initialized with {total} total generators")
 
 
 async def shutdown_video_editor() -> None:
@@ -160,7 +193,12 @@ async def capabilities():
             "dualWebSocket": True,
             "streamEndpoint": "/ws/ve/stream",
             "controlEndpoint": "/ws/ve/control",
-            "jobTypes": ["story_generate", "tts_generate", "image_generate", "video_generate", "music_generate", "final_merge"],
+            "jobTypes": [
+                "script_generate", "tts_generate", "image_generate",
+                "video_generate", "av_generate", "music_generate",
+                "sfx_generate", "lipsync", "scene_plan",
+                "final_merge", "model_download",
+            ],
         }
     }
 
@@ -363,7 +401,33 @@ async def websocket_control_endpoint(websocket: WebSocket):
                 
                 elif msg_type == "ve_find_compatible_generators":
                     response = await handle_ve_find_compatible_generators(payload)
-                
+
+                # ─────────────────────────────────────────────────────────
+                # Custom Generator Management
+                # ─────────────────────────────────────────────────────────
+
+                elif msg_type == "ve_custom_generators_list":
+                    response = await handle_ve_custom_generators_list(payload)
+
+                elif msg_type == "ve_custom_generators_add":
+                    response = await handle_ve_custom_generators_add(payload)
+
+                elif msg_type == "ve_custom_generators_remove":
+                    response = await handle_ve_custom_generators_remove(payload)
+
+                elif msg_type == "ve_generators_reload":
+                    response = await handle_ve_generators_reload(payload)
+
+                # ─────────────────────────────────────────────────────────
+                # Scene Planning
+                # ─────────────────────────────────────────────────────────
+
+                elif msg_type == "ve_plan_scene":
+                    response = await handle_ve_plan_scene(payload)
+
+                elif msg_type == "ve_plan_all_scenes":
+                    response = await handle_ve_plan_all_scenes(payload)
+
                 # ─────────────────────────────────────────────────────────
                 # Job Queries (not start/cancel which go on stream)
                 # ─────────────────────────────────────────────────────────
@@ -374,6 +438,16 @@ async def websocket_control_endpoint(websocket: WebSocket):
                 elif msg_type == "ve_list_jobs":
                     response = await handle_ve_list_jobs(payload)
                 
+                # ─────────────────────────────────────────────────────────
+                # Filesystem (shared with code editor)
+                # ─────────────────────────────────────────────────────────
+
+                elif msg_type == "get_home_directory":
+                    response = await handle_get_home_directory(payload)
+
+                elif msg_type == "list_directory":
+                    response = await handle_list_directory(payload)
+
                 # ─────────────────────────────────────────────────────────
                 # Utility
                 # ─────────────────────────────────────────────────────────

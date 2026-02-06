@@ -362,6 +362,75 @@ export const useVideoCompanionStore = defineStore('videoCompanion', () => {
     };
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // HTTP Asset helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const assetsBaseUrl = computed(
+    () => `http://localhost:${localCompanion.port}/video-editor/assets`,
+  );
+
+  /**
+   * Upload a file as a project asset (via HTTP multipart)
+   */
+  async function uploadAsset(
+    projectId: string,
+    file: File,
+    options?: {
+      assetType?: string;
+      subfolder?: string;
+      customName?: string;
+    },
+  ): Promise<{
+    success: boolean;
+    asset_id?: string;
+    path?: string;
+    asset_type?: string;
+    metadata?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('project_id', projectId);
+    if (options?.assetType) formData.append('asset_type', options.assetType);
+    if (options?.subfolder) formData.append('subfolder', options.subfolder);
+    if (options?.customName) formData.append('custom_name', options.customName);
+
+    const response = await fetch(`${assetsBaseUrl.value}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    return response.json();
+  }
+
+  /**
+   * Get a URL to serve an asset file
+   */
+  function getAssetUrl(projectId: string, path: string): string {
+    return `${assetsBaseUrl.value}/file?project_id=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`;
+  }
+
+  /**
+   * Get a URL for an asset thumbnail
+   */
+  function getAssetThumbUrl(projectId: string, path: string, size = 256): string {
+    return `${assetsBaseUrl.value}/thumb?project_id=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}&size=${size}`;
+  }
+
+  /**
+   * Delete an asset
+   */
+  async function deleteAsset(
+    projectId: string,
+    assetId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(
+      `${assetsBaseUrl.value}/delete?project_id=${encodeURIComponent(projectId)}&asset_id=${encodeURIComponent(assetId)}`,
+      { method: 'DELETE' },
+    );
+    return response.json();
+  }
+
   // Try to connect on store creation
   void connect();
 
@@ -377,5 +446,12 @@ export const useVideoCompanionStore = defineStore('videoCompanion', () => {
     request,
     streamRequest,
     onJobProgress,
+
+    // HTTP Asset helpers
+    assetsBaseUrl,
+    uploadAsset,
+    getAssetUrl,
+    getAssetThumbUrl,
+    deleteAsset,
   };
 });
