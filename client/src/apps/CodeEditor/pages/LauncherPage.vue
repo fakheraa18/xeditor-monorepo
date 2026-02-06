@@ -44,7 +44,7 @@ const showVideoEditor = computed(() => route.query.dev === 'true');
 onMounted(() => {
   // Redirect to /code if dev parameter is not present
   if (!showVideoEditor.value) {
-    router.replace('/code');
+    void router.replace('/code');
   }
 });
 </script>
