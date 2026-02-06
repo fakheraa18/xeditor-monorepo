@@ -190,16 +190,16 @@ def build_server_binary(*, server_dir: Path, output_name: str) -> Path:
         "--assume-yes-for-downloads",
         f"--output-filename={output_name}",
         f"--output-dir={str(dist_dir)}",
-        f"--include-data-dir={str(server_dir / 'prompt_sets')}=prompt_sets",
-        f"--include-data-file={str(server_dir / 'models' / 'defaults.json')}=models/defaults.json",
-        f"--include-data-file={str(server_dir / 'models' / 'families.json')}=models/families.json",
-        "--include-package=models",
-        "--include-package=prompt_sets",
-        "--include-package=tools",
-        "--include-package=agent",
-        "--include-package=parsers",
-        "--include-package=prompts",
-        "--include-package=sets",
+        f"--include-data-dir={str(server_dir / 'apps' / 'code_editor' / 'prompt_sets')}=apps/code_editor/prompt_sets",
+        f"--include-data-file={str(server_dir / 'apps' / 'code_editor' / 'models' / 'defaults.json')}=apps/code_editor/models/defaults.json",
+        f"--include-data-file={str(server_dir / 'apps' / 'code_editor' / 'models' / 'families.json')}=apps/code_editor/models/families.json",
+        "--include-package=apps.code_editor.models",
+        "--include-package=apps.code_editor.prompt_sets",
+        "--include-package=apps.code_editor.tools",
+        "--include-package=apps.code_editor.agent",
+        "--include-package=apps.code_editor.parsers",
+        "--include-package=apps.code_editor.prompts",
+        "--include-package=apps.code_editor.sets",
         "--include-package=tree_sitter_languages",
         # Exclude onnxruntime packages from compilation - they have complex native deps
         # They'll be included as DLLs/shared libs in the distribution folder
@@ -269,8 +269,8 @@ def build_server_binary(*, server_dir: Path, output_name: str) -> Path:
     # Copy prompt_sets directory with all Python files for runtime discovery
     # Nuitka compiles prompt_sets but doesn't preserve .py files on disk, which are needed
     # for PromptSetManager to discover sets and load parsers dynamically
-    prompt_sets_src = server_dir / "prompt_sets"
-    prompt_sets_dest = produced_dist / "prompt_sets"
+    prompt_sets_src = server_dir / "apps" / "code_editor" / "prompt_sets"
+    prompt_sets_dest = produced_dist / "apps" / "code_editor" / "prompt_sets"
     
     if prompt_sets_src.exists() and prompt_sets_src.is_dir():
         # Remove existing prompt_sets in dist (may have partial data from Nuitka)
