@@ -235,7 +235,12 @@ def _find_ripgrep_binary(auto_download: bool = False) -> Optional[str]:
     # Check for dev-mode rg binary (in server/bin directory)
     try:
         # Try to find server directory relative to this file
-        server_dir = Path(__file__).resolve().parent.parent
+        # __file__ = server/apps/code_editor/tools/executor.py
+        # .parent = server/apps/code_editor/tools/
+        # .parent.parent = server/apps/code_editor/
+        # .parent.parent.parent = server/apps/
+        # .parent.parent.parent.parent = server/
+        server_dir = Path(__file__).resolve().parent.parent.parent.parent
         dev_bin_dir = server_dir / "bin"
         if sys.platform == "win32":
             dev_rg = dev_bin_dir / "rg.exe"
@@ -1084,12 +1089,14 @@ class ToolExecutor:
 
         try:
             # Use ripgrep for fast searching
+            # Use --regexp to explicitly mark the query as a pattern,
+            # preventing queries starting with -- from being interpreted as flags
             cmd = [
                 rg_binary,
                 "--json",
                 "--max-count", "50",  # Limit matches per file
                 "--max-filesize", "1M",  # Skip large files
-                query,
+                "--regexp", query,
                 str(search_dir),
             ]
 
