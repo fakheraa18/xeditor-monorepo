@@ -49,7 +49,6 @@
       label="AI Story Generation"
       caption="Configure model, provider, and script parameters"
       class="q-mb-md"
-      default-opened
     >
       <q-card flat bordered>
         <q-card-section>
