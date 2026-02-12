@@ -551,7 +551,7 @@ Semantic search finds code that is semantically similar to the query, even if it
 **WebSocket Connection Failures**
 
 - Ensure the server is running (`npm run dev:server`)
-- Check that the server is listening on the expected port (default: 8000)
+- Check that the server is listening on the expected port (default: 8081)
 - Verify CORS settings if connecting from a different origin
 - Check browser console for connection errors
 

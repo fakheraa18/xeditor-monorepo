@@ -23,7 +23,7 @@ export const useLocalCompanionStore = defineStore('localCompanion', () => {
         return electronBridge.companionPort;
       }
     }
-    return parseInt(localStorage.getItem('xeditor.companion.port') || '8000');
+    return parseInt(localStorage.getItem('xeditor.companion.port') || '8081');
   };
 
   const port = ref(getInitialPort());

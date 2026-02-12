@@ -20,7 +20,7 @@ const currentDir = fileURLToPath(new URL('.', import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
-const SERVER_PORT = parseInt(process.env.XEDITOR_PORT || '8000');
+const SERVER_PORT = parseInt(process.env.XEDITOR_PORT || '8081');
 const SERVER_HOST = process.env.XEDITOR_HOST || '127.0.0.1';
 
 /**
