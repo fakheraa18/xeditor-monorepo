@@ -29,6 +29,7 @@
             dense
             emit-value
             map-options
+            option-disable="disable"
             class="col-4"
             @update:model-value="handleProviderChange"
           >
@@ -473,13 +474,20 @@ const selectedLocalCompanionRunner = computed<LocalCompanionRunner>({
 // Server-provided provider list
 const serverProviders = ref<ProviderDefinition[]>([]);
 
+// Enabled providers: ollama, lmstudio, kimi
+const enabledProviders = ['ollama', 'lmstudio', 'kimi'];
+
 // Computed provider options - use server list if available, fallback otherwise
 const providerOptions = computed(() => {
   if (serverProviders.value.length > 0) {
-    return serverProviders.value.map((p) => ({
-      label: p.label,
-      value: p.id,
-    }));
+    return serverProviders.value.map((p) => {
+      const isEnabled = enabledProviders.includes(p.id);
+      return {
+        label: isEnabled ? p.label : `${p.label} (under development)`,
+        value: p.id,
+        disable: !isEnabled,
+      };
+    });
   }
   return [];
 });

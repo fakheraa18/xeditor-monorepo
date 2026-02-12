@@ -20,7 +20,6 @@ PROVIDER_REGISTRY: List[Dict[str, Any]] = [
     {"id": "sglang", "label": "SGLang"},
     {"id": "openai_compatible", "label": "OpenAI Compatible"},
     {"id": "kimi", "label": "Kimi"},
-    {"id": "local_companion", "label": "Local Companion"},
 ]
 
 
