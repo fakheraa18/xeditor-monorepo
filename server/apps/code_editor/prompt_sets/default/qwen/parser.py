@@ -378,7 +378,7 @@ class QwenParser(ResponseParser):
         
         result = ParsedResponse(
             thinking=thinking,
-            tool_call=tool_call,
+            tool_call=None,
             patches=patches or None,
             final_text=final_text,
         )

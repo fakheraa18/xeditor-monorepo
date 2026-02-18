@@ -228,9 +228,6 @@ class DefaultParser(ResponseParser):
         if not think_match:
             think_match = self.THOUGHT_PATTERN.search(content)
         
-        # Try tool call tag
-        tool_match = self.TOOL_CODE_PATTERN.search(content)
-        
         thinking: Optional[str] = None
         if think_match:
             thinking = think_match.group(1).strip()
@@ -246,24 +243,13 @@ class DefaultParser(ResponseParser):
                 start_pos = opening_thought_match.end()
                 thinking = content[start_pos:].strip()
         
-        tool_call: Optional[Dict[str, Any]] = None
-        if tool_match:
-            try:
-                parsed = json.loads(tool_match.group(1).strip())
-                if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
-                    tool_call = {
-                        "tool": parsed["tool"],
-                        "args": parsed["args"],
-                    }
-            except (json.JSONDecodeError, KeyError):
-                pass
-        
+        # Tool calls come from provider events (native API), not from content parsing
         # Final text is content with all tags stripped
         final_text = self.strip_tags(content)
         
         return ParsedResponse(
             thinking=thinking,
-            tool_call=tool_call,
+            tool_call=None,
             final_text=final_text,
         )
     
@@ -313,30 +299,16 @@ class ClaudeParser(ResponseParser):
         if not think_match:
             think_match = self.THOUGHT_PATTERN.search(content)
         
-        # Try tool call tag
-        tool_match = self.TOOL_CODE_PATTERN.search(content)
-        
         thinking: Optional[str] = None
         if think_match:
             thinking = think_match.group(1).strip()
         
-        tool_call: Optional[Dict[str, Any]] = None
-        if tool_match:
-            try:
-                parsed = json.loads(tool_match.group(1).strip())
-                if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
-                    tool_call = {
-                        "tool": parsed["tool"],
-                        "args": parsed["args"],
-                    }
-            except (json.JSONDecodeError, KeyError):
-                pass
-        
+        # Tool calls come from provider events (native API), not from content parsing
         final_text = self.strip_tags(content)
         
         return ParsedResponse(
             thinking=thinking,
-            tool_call=tool_call,
+            tool_call=None,
             final_text=final_text,
         )
     
@@ -384,43 +356,17 @@ class GPTParser(ResponseParser):
     
     def parse(self, content: str) -> ParsedResponse:
         think_match = self.THINK_PATTERN.search(content)
-        tool_match = self.TOOL_CODE_PATTERN.search(content)
         
         thinking: Optional[str] = None
         if think_match:
             thinking = think_match.group(1).strip()
         
-        tool_call: Optional[Dict[str, Any]] = None
-        if tool_match:
-            try:
-                parsed = json.loads(tool_match.group(1).strip())
-                if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
-                    tool_call = {
-                        "tool": parsed["tool"],
-                        "args": parsed["args"],
-                    }
-            except (json.JSONDecodeError, KeyError):
-                pass
-        
-        # If no explicit tool_code tag, check for JSON code blocks that look like tool calls
-        if not tool_call:
-            for match in self.JSON_CODE_BLOCK.finditer(content):
-                try:
-                    parsed = json.loads(match.group(1).strip())
-                    if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
-                        tool_call = {
-                            "tool": parsed["tool"],
-                            "args": parsed["args"],
-                        }
-                        break
-                except (json.JSONDecodeError, KeyError):
-                    continue
-        
+        # Tool calls come from provider events (native API), not from content parsing
         final_text = self.strip_tags(content)
         
         return ParsedResponse(
             thinking=thinking,
-            tool_call=tool_call,
+            tool_call=None,
             final_text=final_text,
         )
     

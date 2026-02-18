@@ -228,7 +228,7 @@ class KimiParser(ResponseParser):
 
         return ParsedResponse(
             thinking=thinking,
-            tool_call=tool_call,
+            tool_call=None,
             final_text=final_text,
         )
 

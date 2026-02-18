@@ -27,11 +27,7 @@ You have access to tools for:
 - run_command: Execute shell commands
 </tools>
 
-**IMPORTANT - Tool Call Format:**
-When you need to call a tool, you MUST use the following format:
-<function_call>
-{"name": "<tool_name>", "parameters": {"param1": "value1", "param2": "value2"}}
-</function_call>
+**Tool Calling:** Use the tool calling API to invoke tools when needed. The system handles tool execution automatically.
 
 <best_practices>
 1. Read files before modifying them

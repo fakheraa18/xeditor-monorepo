@@ -6,7 +6,7 @@ decoupling provider-specific wire formats from the rest of the system.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any, List
 
 
 @dataclass
@@ -201,7 +201,7 @@ class LLMResponse:
 class LLMRequest:
     """
     Normalized request to any LLM provider.
-    
+
     Contains all the information a provider needs to make a request,
     abstracted from the specific wire format.
     """
@@ -210,21 +210,24 @@ class LLMRequest:
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     extra_payload: Dict[str, Any] = field(default_factory=dict)
-    
+
+    # Native tool calling (OpenAI format for LiteLLM)
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: str = "auto"
+
     # Provider-specific structured parameters (from model config providerParams)
-    # These are translated by each provider into provider-specific request fields
     provider_params: Dict[str, Any] = field(default_factory=dict)
-    
+
     # Provider-specific config (passed through from model config)
     provider: str = ""
     connection: Dict[str, Any] = field(default_factory=dict)
     auth: Dict[str, Any] = field(default_factory=dict)
-    
+
     # Model metadata
     family: Optional[str] = None
     version: Optional[str] = None
     mode: Optional[str] = None
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LLMRequest":
         """Create from dictionary (e.g., from apps.code_editor.agent_runner payload)."""
@@ -234,6 +237,8 @@ class LLMRequest:
             temperature=data.get("temperature", 0.7),
             max_tokens=data.get("maxTokens"),
             extra_payload=data.get("extraPayload", {}),
+            tools=data.get("tools"),
+            tool_choice=data.get("toolChoice", "auto"),
             provider_params=data.get("providerParams", {}),
             provider=data.get("provider", ""),
             connection=data.get("connection", {}),

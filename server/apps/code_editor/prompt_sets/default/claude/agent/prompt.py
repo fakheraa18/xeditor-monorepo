@@ -27,23 +27,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. DO NOT make up values for or ask about optional parameters.
 8. Carefully analyze descriptive terms in the request as they may indicate required parameter values that should be included even if not explicitly quoted.
 
-**IMPORTANT - Tool Call Format:**
-When you need to call a tool, you MUST use the following format:
-<tool_code>
-{"tool": "<tool_name>", "args": {"param1": "value1", "param2": "value2"}}
-</tool_code>
-
-Example for reading a file:
-<tool_code>
-{"tool": "read_file", "args": {"target_file": "path/to/file.vue"}}
-</tool_code>
-
-Example for searching code:
-<tool_code>
-{"tool": "search_code", "args": {"query": "search term", "path": ""}}
-</tool_code>
-
-The JSON parameters must match the tool's parameter names exactly as described in the tool definitions below.
+**Tool Calling:** Use the tool calling API to invoke tools when needed. The system handles tool execution automatically. Ensure parameters match the tool definitions exactly.
 </tool_calling>
 
 <search_and_reading>

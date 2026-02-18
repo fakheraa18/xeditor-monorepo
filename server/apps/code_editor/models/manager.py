@@ -1,6 +1,7 @@
 """
 Model Manager for XEditor Local Companion.
 Handles loading bundled default models and merging with user-defined models.
+Includes one-time migration for LiteLLM provider normalization.
 """
 
 import json
@@ -8,6 +9,11 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+
+
+# Migration marker - prevents re-running migration
+LITELLM_MIGRATION_VERSION = "litellm_v1"
+MIGRATION_MARKER_FILENAME = ".litellm_migration_done"
 
 
 def get_xeditor_base_path() -> Path:
@@ -18,6 +24,61 @@ def get_xeditor_base_path() -> Path:
 def get_models_path() -> Path:
     """Get the path for user-defined models (~/.xeditor/models.json)."""
     return get_xeditor_base_path() / "models.json"
+
+
+def _get_migration_marker_path() -> Path:
+    """Get the path for the migration marker file."""
+    return get_xeditor_base_path() / MIGRATION_MARKER_FILENAME
+
+
+def _has_migration_been_done() -> bool:
+    """Check if the LiteLLM migration has already been applied."""
+    marker_path = _get_migration_marker_path()
+    if not marker_path.exists():
+        return False
+    try:
+        with open(marker_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("version") == LITELLM_MIGRATION_VERSION
+    except Exception:
+        return False
+
+
+def _write_migration_marker() -> None:
+    """Write the migration marker to prevent re-running."""
+    base = get_xeditor_base_path()
+    base.mkdir(parents=True, exist_ok=True)
+    marker_path = _get_migration_marker_path()
+    with open(marker_path, "w", encoding="utf-8") as f:
+        json.dump({"version": LITELLM_MIGRATION_VERSION}, f, indent=2)
+
+
+def _migrate_model_provider(model: Dict[str, Any]) -> bool:
+    """
+    Migrate a single model to LiteLLM provider format.
+    Returns True if the model was modified.
+    """
+    modified = False
+    provider = (model.get("provider") or "").strip().lower()
+    family = (model.get("family") or "").strip().lower()
+
+    # openai_compatible + family gemini -> provider google
+    if provider == "openai_compatible" and family == "gemini":
+        model["provider"] = "google"
+        modified = True
+    # openai_compatible + family kimi -> provider kimi
+    elif provider == "openai_compatible" and family == "kimi":
+        model["provider"] = "kimi"
+        modified = True
+    # provider gemini -> provider google
+    elif provider == "gemini":
+        model["provider"] = "google"
+        if not family:
+            model["family"] = "gemini"
+        modified = True
+
+    # Preserve raw id (no change) - runtime auto-prefix handles it
+    return modified
 
 
 def get_bundled_defaults_path() -> Path:
@@ -66,17 +127,33 @@ class ModelManager:
                 with open(self.user_path, "r", encoding="utf-8") as f:
                     user_models = json.load(f)
                     if isinstance(user_models, list):
-                        for model in user_models:
-                            if isinstance(model, dict) and "id" in model:
-                                self._apply_user_model_flags(model)
-                                self._models_cache[model["id"]] = model
+                        models_to_process = user_models
                     elif isinstance(user_models, dict):
-                        # Handle dict format (keyed by model ID)
-                        for model_id, model in user_models.items():
-                            if isinstance(model, dict):
-                                model["id"] = model_id
-                                self._apply_user_model_flags(model)
-                                self._models_cache[model_id] = model
+                        models_to_process = [
+                            {**m, "id": mid} for mid, m in user_models.items() if isinstance(m, dict)
+                        ]
+                    else:
+                        models_to_process = []
+
+                    # One-time migration for LiteLLM provider normalization
+                    if not _has_migration_been_done():
+                        migration_needed = False
+                        for model in models_to_process:
+                            if isinstance(model, dict) and "id" in model:
+                                if _migrate_model_provider(model):
+                                    migration_needed = True
+                        if migration_needed:
+                            try:
+                                with open(self.user_path, "w", encoding="utf-8") as f:
+                                    json.dump(models_to_process, f, indent=2)
+                            except Exception as e:
+                                print(f"Failed to save migrated models: {e}")
+                        _write_migration_marker()
+
+                    for model in models_to_process:
+                        if isinstance(model, dict) and "id" in model:
+                            self._apply_user_model_flags(model)
+                            self._models_cache[model["id"]] = model
             except Exception as e:
                 print(f"Failed to load user models: {e}")
 

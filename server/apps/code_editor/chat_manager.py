@@ -160,10 +160,8 @@ class ChatManager:
         """
         Build LLM context from chat history, filtering out meta-only content.
         
-        Tool calls from history are serialized using the current family's format,
-        ensuring the LLM sees tool calls in a format it recognizes from training.
-        This prevents the LLM from learning incorrect tool calling patterns from
-        mixed-format history when users switch between model families.
+        Uses native OpenAI tool format (assistant with tool_calls, tool messages)
+        for turns that include tool calls, so the LLM sees the correct format.
         
         Args:
             chat: Chat data with turns
@@ -175,16 +173,8 @@ class ChatManager:
             version: Optional model version
         
         Returns:
-            List of messages in OpenAI format: [{"role": "...", "content": "..."}]
+            List of messages in OpenAI format (with optional tool_calls and tool role)
         """
-        # Get parser for current family to serialize tool calls in the correct format
-        parser: Optional["ResponseParser"] = None
-        try:
-            from apps.code_editor.parsers.base import get_parser_for_request
-            parser = get_parser_for_request(set_id, family, version, "agent")
-        except Exception as e:
-            print(f"Warning: Failed to get parser for family {family}: {e}")
-        
         messages = [{"role": "system", "content": system_prompt}]
         
         # Process historical turns
@@ -204,14 +194,40 @@ class ChatManager:
                 user_msg = self._format_message_with_context(user_msg, user_context)
             messages.append({"role": "user", "content": user_msg})
             
-            # Build assistant response
+            # Build assistant response(s) - use native tool format when we have tool calls
+            tool_calls_list = [
+                tc for tc in turn.get("toolCalls", [])
+                if tc.get("includeInContext", True)
+            ]
             assistant_msg = turn.get("assistantMessage", "")
             
-            # Include tool results that are marked for context
-            # Use family-specific serialization if parser is available
-            tool_summary = self._summarize_tools(turn.get("toolCalls", []), parser=parser)
-            if tool_summary:
-                assistant_msg = f"{tool_summary}\n\n{assistant_msg}"
+            if tool_calls_list:
+                # Native format: assistant with tool_calls, then tool messages, then final assistant text
+                tool_calls_for_api = []
+                for tc in tool_calls_list:
+                    tool_name = tc.get("tool", "")
+                    args = tc.get("args", {})
+                    tc_id = tc.get("id") or f"call_{abs(hash(tool_name + json.dumps(args, sort_keys=True))) % 10**10}"
+                    tool_calls_for_api.append({
+                        "id": tc_id,
+                        "type": "function",
+                        "function": {"name": tool_name, "arguments": json.dumps(args)},
+                    })
+                messages.append({
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": tool_calls_for_api,
+                })
+                for tc in tool_calls_list:
+                    tool_name = tc.get("tool", "")
+                    args = tc.get("args", {})
+                    tc_id = tc.get("id") or f"call_{abs(hash(tool_name + json.dumps(args, sort_keys=True))) % 10**10}"
+                    result_str = self._format_tool_result_for_context(tc)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": result_str,
+                    })
             
             if assistant_msg:
                 messages.append({"role": "assistant", "content": assistant_msg})
@@ -221,6 +237,36 @@ class ChatManager:
         messages.append({"role": "user", "content": formatted_message})
         
         return messages
+    
+    def _format_tool_result_for_context(
+        self,
+        tool_call: Dict[str, Any],
+        max_result_chars: int = 5000,
+    ) -> str:
+        """Format a single tool call result for LLM context (native tool message content)."""
+        error = tool_call.get("error")
+        if error:
+            return f"Error: {error}"
+        result = tool_call.get("result")
+        if result is None:
+            return ""
+        tool_name = tool_call.get("tool", "")
+        if tool_name == "read_file" and isinstance(result, dict):
+            total_lines = result.get("totalLines", "?")
+            truncated = result.get("truncated", False)
+            strategy = result.get("strategy", "full")
+            content = result.get("content", "")
+            path = result.get("path", "")
+            meta_info = f"[{total_lines} lines total"
+            if truncated:
+                meta_info += f", {strategy}"
+            meta_info += "]"
+            result_str = f"File: {path}\n{meta_info}\n\n{content}"
+        else:
+            result_str = json.dumps(result) if isinstance(result, dict) else str(result)
+        if len(result_str) > max_result_chars:
+            result_str = result_str[:max_result_chars] + f"\n... [truncated at {max_result_chars} chars]"
+        return result_str
 
     def _format_message_with_context(
         self,

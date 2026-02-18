@@ -302,7 +302,7 @@ import { useAiConfigStore } from '../stores/aiConfig';
 import { useLocalCompanionStore } from '../../../stores/localCompanion';
 import SetDesigner from '../components/ai/SetDesigner.vue';
 import ModelEditorDialog from '../components/ai/ModelEditorDialog.vue';
-import type { ModelConfig, ModelProviderId, PromptSetMetadata } from '../core/types';
+import type { ModelConfig, PromptSetMetadata } from '../core/types';
 
 const $q = useQuasar();
 const aiConfig = useAiConfigStore();
@@ -315,10 +315,12 @@ const companionStore = useLocalCompanionStore();
 const showModelEditor = ref(false);
 const modelToEdit = ref<ModelConfig | null>(null);
 
-function getProviderIcon(provider: ModelProviderId): string {
-  const icons: Record<ModelProviderId, string> = {
+function getProviderIcon(provider: string): string {
+  const icons: Record<string, string> = {
     openai: 'smart_toy',
     anthropic: 'psychology',
+    google: 'tips_and_updates',
+    openrouter: 'route',
     ollama: 'hub',
     lmstudio: 'computer',
     vllm: 'speed',
@@ -327,7 +329,7 @@ function getProviderIcon(provider: ModelProviderId): string {
     kimi: 'auto_awesome',
     local_companion: 'terminal',
   };
-  return icons[provider] || 'memory';
+  return icons[provider] ?? 'memory';
 }
 
 function addNewModel() {

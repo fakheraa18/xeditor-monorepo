@@ -1,43 +1,25 @@
 """
 LLM Provider package.
 
-Provides a unified interface for different LLM providers (OpenAI, Gemini, LM Studio, vLLM, etc.)
-through the Provider Adapter pattern. Each provider normalizes its responses into structured
-LLMEvents that the rest of the system can consume uniformly.
+All requests are routed through LiteLLMProvider for unified execution
+across OpenAI, Anthropic, Ollama, LM Studio, vLLM, OpenAI-compatible endpoints, etc.
 """
 
 from .events import LLMEvent, LLMResponse, LLMRequest, TokenUsage
 from .base import LLMProvider
 from .factory import get_provider, get_provider_for_request
-
-# Provider implementations
-from .openai import OpenAIProvider
-from .gemini import GeminiProvider, is_gemini_endpoint
-from .kimi import KimiProvider, is_kimi_endpoint
-from .lmstudio import LMStudioProvider
-from .vllm import VLLMProvider
-from .ollama import OllamaProvider
-from .http import GenericHTTPProvider
+from .litellm_provider import LiteLLMProvider
+from .normalize import normalize_model_name, PROVIDER_TO_PREFIX
 
 __all__ = [
-    # Events
     "LLMEvent",
     "LLMResponse",
     "LLMRequest",
     "TokenUsage",
-    # Base
     "LLMProvider",
-    # Factory
     "get_provider",
     "get_provider_for_request",
-    # Providers
-    "OpenAIProvider",
-    "GeminiProvider",
-    "is_gemini_endpoint",
-    "KimiProvider",
-    "is_kimi_endpoint",
-    "LMStudioProvider",
-    "VLLMProvider",
-    "OllamaProvider",
-    "GenericHTTPProvider",
+    "LiteLLMProvider",
+    "normalize_model_name",
+    "PROVIDER_TO_PREFIX",
 ]

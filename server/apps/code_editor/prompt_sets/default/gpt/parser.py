@@ -355,55 +355,8 @@ class HarmonyParser(ResponseParser):
         if think_match:
             thinking = think_match.group(1).strip()
         
-        # Extract tool call from Harmony format
-        tool_call: Optional[Dict[str, Any]] = None
-        harmony_match = self.HARMONY_TOOL_CALL_START.search(content)
-        
-        if harmony_match:
-            tool_name = harmony_match.group(1).strip()
-            # Find the position after <|message|>
-            message_end_pos = harmony_match.end()
-            
-            # Extract JSON object starting from message_end_pos
-            json_str = self._extract_json_object(content, message_end_pos)
-            
-            if json_str:
-                try:
-                    # Clean JSON string (handle curly quotes)
-                    cleaned_json = self._clean_json(json_str)
-                    
-                    # Parse JSON arguments
-                    args = None
-                    try:
-                        args = json.loads(cleaned_json)
-                    except json.JSONDecodeError:
-                        # Attempt repair for truncated JSON by appending closing braces
-                        for i in range(1, 4):  # Try adding up to 3 braces
-                            try:
-                                args = json.loads(cleaned_json + "}" * i)
-                                break
-                            except json.JSONDecodeError:
-                                pass
-                        
-                        # If still failed, raise the error to be caught below
-                        if args is None:
-                            raise
-                    
-                    if isinstance(args, dict):
-                        # Normalize tool arguments (map parameter names, clean paths)
-                        normalized_args = self._normalize_tool_args(tool_name, args)
-                        
-                        tool_call = {
-                            "tool": tool_name,
-                            "args": normalized_args,
-                        }
-                except json.JSONDecodeError as e:
-                    # If JSON parsing fails, log but don't fail completely
-                    # The tool_call will remain None
-                    print(f"Warning: Failed to parse JSON in Harmony tool call: {e}")
-                    print(f"JSON string: {json_str[:200]}...")
-        
-        # Remove complete tool calls from final_text (they're handled separately)
+        # Tool calls come from provider events (native API), not from content parsing
+        # Remove complete tool calls from final_text (defensive: strip if model outputs them)
         # Only remove complete tool calls - partial tokens are handled by get_streamable_content()
         final_text = self._remove_complete_tool_calls(content)
         # Also remove thinking tags (internal, shouldn't be displayed)
@@ -426,7 +379,7 @@ class HarmonyParser(ResponseParser):
         
         result = ParsedResponse(
             thinking=thinking,
-            tool_call=tool_call,
+            tool_call=None,
             patches=patches or None,
             final_text=final_text,
         )

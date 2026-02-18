@@ -60,15 +60,18 @@ export interface FolderRuntimeState {
 // Model Provider & Connection Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Provider IDs from LiteLLM catalog. Server-driven; new providers may be added. */
 export type ModelProviderId =
   | 'openai'
   | 'anthropic'
+  | 'google'
+  | 'openrouter'
   | 'ollama'
   | 'lmstudio'
   | 'vllm'
   | 'sglang'
-  | 'openai_compatible'
   | 'kimi'
+  | 'openai_compatible'
   | 'local_companion';
 
 export type LocalCompanionRunner = 'vllm';
@@ -130,7 +133,7 @@ export interface ProviderPresetValidation {
  * Used to populate the Provider dropdown in ModelEditorDialog.
  */
 export interface ProviderDefinition {
-  id: ModelProviderId;
+  id: string;  // Server-driven; may include providers not in ModelProviderId union
   label: string;
 }
 

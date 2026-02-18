@@ -425,6 +425,57 @@ def _load_custom_tool_descriptor(
     return fallback_def
 
 
+def convert_tools_to_openai_format(
+    tool_definitions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Convert tool definitions to OpenAI/LiteLLM tools format.
+
+    Args:
+        tool_definitions: List of {name, description, parameters} dicts
+
+    Returns:
+        List of {"type": "function", "function": {...}} for LiteLLM
+    """
+    result: List[Dict[str, Any]] = []
+    for tool_def in tool_definitions:
+        name = tool_def.get("name", "")
+        if not name:
+            continue
+        description = tool_def.get("description", "")
+        params = tool_def.get("parameters", {})
+
+        properties: Dict[str, Any] = {}
+        required: List[str] = []
+        for param_name, param_info in params.items():
+            if not isinstance(param_info, dict):
+                continue
+            ptype = param_info.get("type", "string")
+            properties[param_name] = {
+                "type": ptype,
+                "description": param_info.get("description", ""),
+            }
+            if param_info.get("required", False):
+                required.append(param_name)
+
+        schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": properties,
+        }
+        if required:
+            schema["required"] = required
+
+        result.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": schema,
+            },
+        })
+    return result
+
+
 def format_all_tools_markdown(tool_definitions: List[Dict[str, Any]]) -> str:
     """
     Format all tool definitions as a single markdown section.

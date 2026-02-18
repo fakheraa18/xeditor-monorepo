@@ -46,7 +46,7 @@ export class CompanionAdapter extends ModelAdapter {
         // Keep connection/auth for parity (even if unused for local_companion)
         connection: {
           baseUrl: config.connection.baseUrl,
-          path: config.connection.path,
+          // path removed - LiteLLM handles path construction automatically
           headers: config.connection.headers,
         },
         auth: config.connection.auth,
@@ -123,7 +123,7 @@ export class CompanionAdapter extends ModelAdapter {
           hfToken: companionStore.huggingFaceToken,
           connection: {
             baseUrl: config.connection.baseUrl,
-            path: config.connection.path,
+            // path removed - LiteLLM handles path construction automatically
             headers: config.connection.headers,
           },
           auth: config.connection.auth,

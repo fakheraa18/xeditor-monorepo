@@ -16,6 +16,7 @@ from apps.code_editor.parsers.base import get_parser_for_request, ParsedResponse
 from apps.code_editor.tools.executor import get_tool_executor
 from apps.code_editor.tools.executor import approve_command
 from apps.code_editor.tools.registry import get_tool_registry
+from apps.code_editor.tools.descriptions import convert_tools_to_openai_format
 from apps.code_editor.tools.context import ToolContext
 from apps.code_editor.prompts.manager import handle_resolve_prompt
 from apps.code_editor.prompts.context_builder import get_context_builder
@@ -692,6 +693,9 @@ class AgentRunner:
                         "messages": [msg.copy() for msg in messages],
                     })
 
+                # Build tools for native LiteLLM tool calling
+                tools_openai = convert_tools_to_openai_format(prompt_context.available_tools)
+
                 # Build LLM request
                 llm_request = LLMRequest(
                     model_id=model_config.get("id", ""),
@@ -699,6 +703,8 @@ class AgentRunner:
                     temperature=prompt_temperature,
                     max_tokens=prompt_max_tokens,
                     extra_payload=merged_extra_payload,
+                    tools=tools_openai if tools_openai else None,
+                    tool_choice="auto",
                     provider_params=model_config.get("providerParams") or {},
                     provider=model_config.get("provider", ""),
                     connection=model_config.get("connection", {}),
@@ -834,88 +840,55 @@ class AgentRunner:
                                 if new_thinking:
                                     await emit_event("thinking_chunk", {"content": new_thinking})
                         
-                        # Check if tool call was detected - if so, mark it but continue to receive "end" event for usage
-                        if parsed.tool_call:
-                            # Close thinking block if it was opened
-                            if thinking_started:
-                                await emit_event("thinking_end", {})
-                                current_thinking_id = None
-                            # CRITICAL FIX: Keep accumulated_content unchanged for LLM context
-                            # Only update final_text (cleaned version) for streaming/saving
-                            # This ensures LLM sees its tool call markers in context
-                            final_text = parsed.final_text
-                            last_parsed = parsed
-                            tool_call_detected = True  # Mark that we detected a tool call
-                            
-                            # Don't break yet - continue to receive "end" event for usage accumulation
-                            # We'll break after receiving "end" event if tool_call_detected is True
-                        
+                        # Native tool calling: tool calls come from provider events only, not from parsing
+                        # Keep last_parsed for patches and final_text
                         last_parsed = parsed
                     
                     elif event.type == "tool_call":
-                        # Provider emitted structured tool call event (preferred path)
-                        # This is more reliable than parsing Harmony tokens from text
+                        # Provider emitted structured tool call event (native LiteLLM tools)
                         if event.tool_call:
                             tool_name = event.tool_call.get("tool")
                             tool_args = event.tool_call.get("args", {})
-                            
-                            # Normalize tool arguments to match executor expectations
-                            # This is the same normalization that HarmonyParser does
+                            tool_call_id = event.tool_call.get("id") or f"call_{uuid.uuid4().hex[:12]}"
                             normalized_args = self._normalize_tool_args(tool_name, tool_args)
-                            
-                            # Create a ParsedResponse-like object for consistency with fallback path
-                            # This allows the rest of the code to treat structured and parsed tool calls the same way
                             last_parsed = ParsedResponse(
-                                tool_call={
-                                    "tool": tool_name,
-                                    "args": normalized_args,
-                                },
-                                final_text=final_text,  # Keep existing final_text
+                                tool_call={"tool": tool_name, "args": normalized_args, "id": tool_call_id},
+                                final_text=final_text,
                             )
-                            
-                            # Stream any remaining safe content before breaking
+                            tool_call_detected = True
+
+                            # Stream any remaining content (native tools: no Harmony tokens in content)
                             if accumulated_content:
-                                content_to_parse = accumulated_content
-                                if received_thinking_from_provider:
-                                    content_to_parse = strip_thinking_tags(accumulated_content)
-                                
-                                # Get final safe content to stream
+                                content_to_parse = strip_thinking_tags(accumulated_content) if received_thinking_from_provider else accumulated_content
                                 safe_content, _ = parser.get_streamable_content(content_to_parse)
                                 if safe_content and len(safe_content) > len(streamed_safe_content):
                                     remaining_content = safe_content[len(streamed_safe_content):]
+                                    if received_thinking_from_provider:
+                                        remaining_content = strip_thinking_tags(remaining_content)
                                     if remaining_content:
-                                        if received_thinking_from_provider:
-                                            remaining_content = strip_thinking_tags(remaining_content)
-                                        if remaining_content:
-                                            # Create or append to assistant_message trace event
-                                            if current_assistant_message_id is None:
-                                                current_assistant_message_id = str(uuid.uuid4())
-                                                current_timestamp = int(datetime.now().timestamp() * 1000)
-                                                trace_events.append({
-                                                    "type": "assistant_message",
-                                                    "id": current_assistant_message_id,
-                                                    "timestamp": current_timestamp,
-                                                    "content": "",
-                                                    "step": current_step,
-                                                })
-                                            # Append content to current assistant_message event
-                                            if current_assistant_message_id:
-                                                for te in trace_events:
-                                                    if te.get("id") == current_assistant_message_id and te.get("type") == "assistant_message":
-                                                        te["content"] = (te.get("content", "") or "") + remaining_content
-                                                        break
-                                            
-                                            await emit_event("content_chunk", {"content": remaining_content})
-                                            streamed_safe_content = safe_content
-                                            final_text = safe_content
-                            
-                            # Close thinking block if it was opened
+                                        if current_assistant_message_id is None:
+                                            current_assistant_message_id = str(uuid.uuid4())
+                                            current_timestamp = int(datetime.now().timestamp() * 1000)
+                                            trace_events.append({
+                                                "type": "assistant_message",
+                                                "id": current_assistant_message_id,
+                                                "timestamp": current_timestamp,
+                                                "content": "",
+                                                "step": current_step,
+                                            })
+                                        if current_assistant_message_id:
+                                            for te in trace_events:
+                                                if te.get("id") == current_assistant_message_id and te.get("type") == "assistant_message":
+                                                    te["content"] = (te.get("content", "") or "") + remaining_content
+                                                    break
+                                        await emit_event("content_chunk", {"content": remaining_content})
+                                        streamed_safe_content = safe_content
+                                        final_text = safe_content
+
                             if thinking_started:
                                 await emit_event("thinking_end", {})
                                 current_thinking_id = None
-                            
-                            # Break from streaming loop - tool execution happens after this
-                            break
+                            # Do not break - continue to receive "end" event for usage
                     
                     elif event.type == "end":
                         usage = event.usage
@@ -932,16 +905,23 @@ class AgentRunner:
                             if prompt_tokens > turn_usage_peak_prompt_tokens:
                                 turn_usage_peak_prompt_tokens = prompt_tokens
 
-                        # Final parse
+                        # Final parse for patches and final_text
                         if accumulated_content:
-                            # CRITICAL FIX: Strip thinking tags from accumulated_content BEFORE parsing
-                            # This prevents the parser from extracting thinking when provider already emitted structured events
-                            content_to_parse_final = accumulated_content
-                            if received_thinking_from_provider:
-                                content_to_parse_final = strip_thinking_tags(accumulated_content)
-                            last_parsed = parser.parse(content_to_parse_final)
-                            
-                            # CRITICAL FIX: Use parsed.final_text which has tool calls removed
+                            content_to_parse_final = strip_thinking_tags(accumulated_content) if received_thinking_from_provider else accumulated_content
+                            parsed_final = parser.parse(content_to_parse_final)
+                            if tool_call_detected and last_parsed and last_parsed.tool_call:
+                                # Preserve tool_call from native event; merge patches and final_text from parser
+                                last_parsed = ParsedResponse(
+                                    final_text=parsed_final.final_text or last_parsed.final_text,
+                                    tool_call=last_parsed.tool_call,
+                                    patches=parsed_final.patches,
+                                    thinking=parsed_final.thinking or last_parsed.thinking,
+                                )
+                            else:
+                                last_parsed = parsed_final
+
+                        if accumulated_content and last_parsed:
+                            # Use parsed.final_text which has tool calls removed (or content as-is for native tools)
                             # This ensures Harmony tokens never leak into the UI
                             if last_parsed.final_text:
                                 # parsed.final_text already has tool calls removed by parser._remove_complete_tool_calls()
@@ -1052,12 +1032,13 @@ class AgentRunner:
                     tool_call = last_parsed.tool_call
                     tool_name = tool_call.get("tool", "")
                     tool_args = tool_call.get("args", {})
+                    # Use native tool_call_id from model (required for OpenAI message format)
+                    tool_call_id = tool_call.get("id") or str(uuid.uuid4())
                     
                     # Reset assistant message ID when tool starts - next text will be a new segment
                     current_assistant_message_id = None
                     
                     # Emit tool start event
-                    tool_call_id = str(uuid.uuid4())
                     tool_start_timestamp = int(datetime.now().timestamp() * 1000)
                     # Add tool_call trace event with proper timestamp
                     trace_events.append({
@@ -1160,13 +1141,19 @@ class AgentRunner:
                         **({"parentId": sub_agent_id} if is_sub_agent and sub_agent_id else {}),
                     })
                     
-                    # Add error to messages for next iteration
+                    # Add error to messages for next iteration (native tool format)
                     messages.append({
                         "role": "assistant",
-                        "content": accumulated_content,
+                        "content": final_text or "",
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": json.dumps(tool_args)},
+                        }],
                     })
                     messages.append({
-                        "role": "user",
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
                         "content": f"Tool Error: {tool_result_data['error']}",
                     })
                     
@@ -1367,25 +1354,36 @@ class AgentRunner:
                                 "toolCallId": tool_call_id,
                             })
                 
-                # Append tool result to messages for next iteration
+                # Append tool result to messages for next iteration (native OpenAI tool format)
                 if tool_result.success:
-                    # Format tool result for LLM context (handles read_file specially)
                     result_str = format_tool_result_for_llm(tool_name, tool_result_for_llm)
                     messages.append({
                         "role": "assistant",
-                        "content": accumulated_content,  # Include the tool call
+                        "content": final_text or "",
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": json.dumps(tool_args)},
+                        }],
                     })
                     messages.append({
-                        "role": "user",
-                        "content": f"Tool Result: {result_str}",
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": result_str,
                     })
                 else:
                     messages.append({
                         "role": "assistant",
-                        "content": accumulated_content,
+                        "content": final_text or "",
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": json.dumps(tool_args)},
+                        }],
                     })
                     messages.append({
-                        "role": "user",
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
                         "content": f"Tool Error: {tool_result.error}",
                     })
                 

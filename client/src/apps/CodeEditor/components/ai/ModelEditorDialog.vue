@@ -196,15 +196,7 @@
             :disable="modelData.provider === 'local_companion'"
             :hint="getBaseUrlHint(modelData.provider)"
           />
-          <q-input
-            v-model="modelData.connection.path"
-            label="API Path"
-            outlined
-            dense
-            class="col-4"
-            :disable="modelData.provider === 'local_companion'"
-            :hint="getPathHint(modelData.provider)"
-          />
+          <!-- Path field removed - LiteLLM handles path construction automatically -->
         </div>
 
         <div class="row q-gutter-md q-mb-md">
@@ -474,20 +466,14 @@ const selectedLocalCompanionRunner = computed<LocalCompanionRunner>({
 // Server-provided provider list
 const serverProviders = ref<ProviderDefinition[]>([]);
 
-// Enabled providers: ollama, lmstudio, kimi
-const enabledProviders = ['ollama', 'lmstudio', 'kimi'];
-
-// Computed provider options - use server list if available, fallback otherwise
+// Provider options from server (LiteLLM catalog) - no hardcoded filtering
 const providerOptions = computed(() => {
   if (serverProviders.value.length > 0) {
-    return serverProviders.value.map((p) => {
-      const isEnabled = enabledProviders.includes(p.id);
-      return {
-        label: isEnabled ? p.label : `${p.label} (under development)`,
-        value: p.id,
-        disable: !isEnabled,
-      };
-    });
+    return serverProviders.value.map((p) => ({
+      label: p.label,
+      value: p.id,
+      disable: false,
+    }));
   }
   return [];
 });
@@ -758,11 +744,6 @@ watch(
       if (props.modelToEdit) {
         modelData.value = JSON.parse(JSON.stringify(props.modelToEdit)) as ModelConfig;
 
-        // Convert provider aliases for display (e.g., "openai_compatible" + family "kimi" -> "kimi")
-        if (modelData.value.provider === 'openai_compatible' && modelData.value.family === 'kimi') {
-          modelData.value.provider = 'kimi';
-        }
-
         if (modelData.value.provider === 'local_companion' && !modelData.value.localCompanion) {
           modelData.value.localCompanion = { runner: 'vllm' };
         }
@@ -840,32 +821,19 @@ function handleFamilyChange(familyId: string) {
   modelData.value.version = '';
 }
 
-function getBaseUrlHint(provider: ModelProviderId): string {
-  const hints: Record<ModelProviderId, string> = {
+function getBaseUrlHint(provider: string): string {
+  const hints: Record<string, string> = {
     openai: 'https://api.openai.com',
     anthropic: 'https://api.anthropic.com',
+    google: 'https://generativelanguage.googleapis.com',
+    openrouter: 'https://openrouter.ai/api/v1',
     ollama: 'http://localhost:11434',
     lmstudio: 'http://localhost:1234',
-    vllm: 'http://localhost:8000',
-    sglang: 'http://localhost:30000',
-    openai_compatible: 'Your server URL',
-    kimi: 'https://kimi-k2.ai/api',
+    vllm: 'http://localhost:8000/v1', // Include /v1 - LiteLLM will append /chat/completions
+    sglang: 'http://localhost:30000/v1', // Include /v1 for OpenAI-compatible endpoints
+    openai_compatible: 'Your server URL (include /v1 if needed)',
+    kimi: 'https://api.moonshot.cn/v1',
     local_companion: 'Handled by Companion Store',
-  };
-  return hints[provider] || '';
-}
-
-function getPathHint(provider: ModelProviderId): string {
-  const hints: Record<ModelProviderId, string> = {
-    openai: '/v1/chat/completions',
-    anthropic: '/v1/messages',
-    ollama: '/api/chat',
-    lmstudio: '/v1/chat/completions',
-    vllm: '/v1/chat/completions',
-    sglang: '/v1/chat/completions',
-    openai_compatible: '/v1/chat/completions',
-    kimi: '/v1/chat/completions',
-    local_companion: '/ws',
   };
   return hints[provider] || '';
 }
@@ -878,7 +846,6 @@ async function handleProviderChange(provider: ModelProviderId) {
     authType.value = 'none';
     modelData.value.connection.auth = { type: 'none' };
     modelData.value.connection.baseUrl = '';
-    modelData.value.connection.path = '';
     if (!modelData.value.localCompanion) {
       modelData.value.localCompanion = { runner: 'vllm' };
     }
@@ -892,7 +859,7 @@ async function handleProviderChange(provider: ModelProviderId) {
   }
 
   modelData.value.connection.baseUrl = getBaseUrlHint(provider);
-  modelData.value.connection.path = getPathHint(provider);
+  // Path field removed - LiteLLM handles path construction automatically
 
   // Fetch preset which will apply defaults (including provider params)
   await fetchProviderPreset();
@@ -941,15 +908,6 @@ async function saveModel() {
   if (!validateExtraPayload()) {
     $q.notify({ type: 'negative', message: 'Invalid extra payload JSON' });
     return;
-  }
-
-  // Convert provider aliases to actual provider values before saving
-  // e.g., "kimi" -> "openai_compatible" with family "kimi"
-  if (modelData.value.provider === 'kimi') {
-    modelData.value.provider = 'openai_compatible';
-    if (!modelData.value.family) {
-      modelData.value.family = 'kimi';
-    }
   }
 
   // Update auth from input fields
