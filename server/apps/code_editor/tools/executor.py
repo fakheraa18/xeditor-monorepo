@@ -486,10 +486,15 @@ class ToolExecutor:
             tool_call_id: Optional tool call ID for event correlation
             model_config: Optional model config for tools that need LLM access (e.g., delegate_task)
         """
+        # Resolve tool name (handle malformed names with token artifacts like <|channel|>)
+        from apps.code_editor.tools.registry import get_tool_registry
+        tool_registry = get_tool_registry()
+        resolved_name = tool_registry.resolve_tool_name(tool_name, self.mode, self.set_id, self.family, self.version)
+        if resolved_name:
+            tool_name = resolved_name
+        
         # Check if tool is allowed for current mode
         if self.mode:
-            from apps.code_editor.tools.registry import get_tool_registry
-            tool_registry = get_tool_registry()
             if not tool_registry.is_tool_allowed(tool_name, self.mode, self.set_id, self.family, self.version):
                 return ToolResult(
                     success=False,

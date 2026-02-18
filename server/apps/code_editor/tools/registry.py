@@ -170,6 +170,59 @@ class ToolRegistry:
         allowed_tools = self.get_tools_for_mode(mode, set_id, family, version)
         return tool_name in allowed_tools
     
+    def resolve_tool_name(
+        self,
+        raw_name: str,
+        mode: Optional[str],
+        set_id: str = "default",
+        family: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Resolve a raw tool name (possibly with LLM token artifacts like <|channel|>)
+        to an allowed tool name. Returns None if no match.
+        
+        Handles cases like:
+        - search_code<|channel|>analysis -> search_code
+        - read_file<|tool_call|> -> read_file
+        - Exact matches are returned as-is
+        - Prefix matches (longest first) are used if exact match fails
+        
+        If mode is None, uses all system tools for matching.
+        """
+        if not raw_name:
+            return None
+        
+        # If mode is None, use system tools only for matching
+        if mode is None:
+            allowed_tools = SYSTEM_TOOLS
+        else:
+            allowed_tools = self.get_tools_for_mode(mode, set_id, family, version)
+        
+        # Exact match - return as-is if already in allowed list
+        if raw_name in allowed_tools:
+            return raw_name
+        
+        # Strip token suffixes: split on < or <| and take first part
+        if "<" in raw_name:
+            base = raw_name.split("<")[0].strip()
+            if base in allowed_tools:
+                return base
+        
+        if "<|" in raw_name:
+            base = raw_name.split("<|")[0].strip()
+            if base in allowed_tools:
+                return base
+        
+        # Prefix match: if raw_name starts with an allowed tool, use it (longest match first)
+        # Sort by length descending to prefer longer matches (e.g., read_file_at_ref over read_file)
+        sorted_tools = sorted(allowed_tools, key=len, reverse=True)
+        for tool in sorted_tools:
+            if raw_name.startswith(tool):
+                return tool
+        
+        return None
+    
     def validate_tool_interface(
         self,
         tool_func: Callable,

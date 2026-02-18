@@ -1035,6 +1035,15 @@ class AgentRunner:
                     # Use native tool_call_id from model (required for OpenAI message format)
                     tool_call_id = tool_call.get("id") or str(uuid.uuid4())
                     
+                    # Resolve tool name (handle malformed names with token artifacts like <|channel|>)
+                    tool_registry = get_tool_registry()
+                    set_id = model_config.get("setId", "default")
+                    family = model_config.get("family", "")
+                    version = model_config.get("version")
+                    resolved_name = tool_registry.resolve_tool_name(tool_name, mode, set_id, family, version)
+                    if resolved_name:
+                        tool_name = resolved_name
+                    
                     # Reset assistant message ID when tool starts - next text will be a new segment
                     current_assistant_message_id = None
                     
@@ -1092,11 +1101,7 @@ class AgentRunner:
                                     # Single folder: use the folder itself as root (paths are relative to project root)
                                     project_root = str(folder_paths[0])
                 
-                # Check if tool is allowed for this set/mode
-                tool_registry = get_tool_registry()
-                set_id = model_config.get("setId", "default")
-                family = model_config.get("family", "")
-                version = model_config.get("version")
+                # Check if tool is allowed for this set/mode (tool_name is already resolved above)
                 
                 if not tool_registry.is_tool_allowed(tool_name, mode, set_id, family, version):
                     # Tool is not in the allowlist
