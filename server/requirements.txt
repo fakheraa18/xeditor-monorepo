@@ -2,6 +2,7 @@ fastapi
 uvicorn
 websockets
 litellm
+google-auth
 python-dotenv
 httpx
 tree-sitter

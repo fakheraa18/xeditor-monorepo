@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn",
     "websockets",
     "litellm",
+    "google-auth",
     "python-dotenv",
     "httpx",
     # Parsing (local-only)

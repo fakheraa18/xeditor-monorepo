@@ -110,6 +110,46 @@ OLLAMA_PARAMETER_DEFAULTS: Dict[str, Any] = {
     "thinking": {"enabled": False}
 }
 
+VLLM_PARAMETER_SCHEMA: List[Dict[str, Any]] = [
+    {
+        "id": "reasoning.enabled",
+        "label": "Enable Reasoning",
+        "type": "boolean",
+        "default": False,
+        "helpText": "Request separate reasoning/thinking output when the model and vLLM server support it."
+    },
+    {
+        "id": "reasoning.effort",
+        "label": "Reasoning Effort",
+        "type": "select",
+        "options": [
+            {"value": "low", "label": "Low"},
+            {"value": "medium", "label": "Medium"},
+            {"value": "high", "label": "High"}
+        ],
+        "default": "medium",
+        "helpText": "Mapped to LiteLLM reasoning_effort (provider/model support required).",
+        "dependsOn": {"field": "reasoning.enabled", "value": True}
+    },
+    {
+        "id": "reasoning.chatTemplateThinking",
+        "label": "Chat Template Thinking",
+        "type": "select",
+        "options": [
+            {"value": "auto", "label": "Auto"},
+            {"value": "enable", "label": "Force Enable"},
+            {"value": "disable", "label": "Force Disable"}
+        ],
+        "default": "auto",
+        "helpText": "Sends vLLM chat_template_kwargs (thinking/enable_thinking). Use Force Enable for models that need template-level thinking toggle.",
+        "dependsOn": {"field": "reasoning.enabled", "value": True}
+    }
+]
+
+VLLM_PARAMETER_DEFAULTS: Dict[str, Any] = {
+    "reasoning": {"enabled": False, "effort": "medium", "chatTemplateThinking": "auto"}
+}
+
 
 def get_provider_parameter_schema(provider: str) -> Optional[List[Dict[str, Any]]]:
     """Get the parameter schema for a provider."""
@@ -120,6 +160,8 @@ def get_provider_parameter_schema(provider: str) -> Optional[List[Dict[str, Any]
         return GEMINI_PARAMETER_SCHEMA
     if provider_lower == "ollama":
         return OLLAMA_PARAMETER_SCHEMA
+    if provider_lower in {"vllm", "local_companion"}:
+        return VLLM_PARAMETER_SCHEMA
     return None
 
 
@@ -132,6 +174,8 @@ def get_provider_parameter_defaults(provider: str) -> Optional[Dict[str, Any]]:
         return GEMINI_PARAMETER_DEFAULTS.copy()
     if provider_lower == "ollama":
         return OLLAMA_PARAMETER_DEFAULTS.copy()
+    if provider_lower in {"vllm", "local_companion"}:
+        return VLLM_PARAMETER_DEFAULTS.copy()
     return None
 
 
@@ -253,7 +297,9 @@ def get_provider_preset(
                 "none": {"helpText": "vLLM typically runs locally without authentication"},
                 "bearer": {"helpText": "Optional: API key if vLLM has authentication"}
             },
-            "recommendedHeaders": {}
+            "recommendedHeaders": {},
+            "parameterSchema": VLLM_PARAMETER_SCHEMA,
+            "parameterDefaults": VLLM_PARAMETER_DEFAULTS
         }
 
     if provider_lower == "sglang":
@@ -300,7 +346,9 @@ def get_provider_preset(
             "supportedAuthTypes": ["none"],
             "defaultAuthType": "none",
             "authDefaults": {"none": {"helpText": "Local Companion handles connection internally"}},
-            "recommendedHeaders": {}
+            "recommendedHeaders": {},
+            "parameterSchema": VLLM_PARAMETER_SCHEMA,
+            "parameterDefaults": VLLM_PARAMETER_DEFAULTS
         }
 
     return None

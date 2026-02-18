@@ -50,6 +50,8 @@ export class CompanionAdapter extends ModelAdapter {
           headers: config.connection.headers,
         },
         auth: config.connection.auth,
+        // Provider parameters (reasoning/tool options mapped server-side)
+        providerParams: config.providerParams,
         // Extra payload parameters
         extraPayload: config.extraPayload,
       });
@@ -127,6 +129,8 @@ export class CompanionAdapter extends ModelAdapter {
             headers: config.connection.headers,
           },
           auth: config.connection.auth,
+          // Provider parameters (reasoning/tool options mapped server-side)
+          providerParams: config.providerParams,
           // Extra payload parameters
           extraPayload: config.extraPayload,
         },
