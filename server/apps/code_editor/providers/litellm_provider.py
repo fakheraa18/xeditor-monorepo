@@ -274,13 +274,18 @@ class LiteLLMProvider(LLMProvider):
         provider_lower = (provider or "").lower()
         supports_fn_calling = self._supports_function_calling(litellm_model)
         force_tools_for_vllm = provider_lower in {"vllm", "local_companion"}
+        force_tools_for_lmstudio = provider_lower in {"lmstudio", "lm_studio"}
 
-        if request.tools and (force_tools_for_vllm or (supports_tools_param and supports_fn_calling)):
+        if request.tools and (
+            force_tools_for_vllm
+            or force_tools_for_lmstudio
+            or (supports_tools_param and supports_fn_calling)
+        ):
             tools = list(request.tools)
             if litellm_model.startswith("gemini/"):
                 tools = self._tools_for_gemini(tools)
             litellm_kwargs["tools"] = tools
-            if force_tools_for_vllm or supports_tool_choice_param:
+            if force_tools_for_vllm or force_tools_for_lmstudio or supports_tool_choice_param:
                 litellm_kwargs["tool_choice"] = request.tool_choice
 
         if request.extra_payload:
